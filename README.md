@@ -27,12 +27,24 @@ what the agent presence registry keys on.
 
 ## Install
 
-The chart is published to `oci://hub.fity.tech/fidentity-charts`, so log in to
-the registry first:
+The chart is published to three places, all carrying the same version built
+from the same tag:
 
 ```bash
+# internal, from TeamCity — needs a registry login
 helm registry login hub.fity.tech
+helm install patchmon oci://hub.fity.tech/fidentity-charts/patchmon --version 2.0.0
+
+# GHCR, from GitHub Actions
+helm install patchmon oci://ghcr.io/fidentity/charts/patchmon --version 2.0.0
+
+# classic repository, for tooling without OCI support
+helm repo add patchmon https://fidentity.github.io/patchmon-helm
+helm install patchmon patchmon/patchmon --version 2.0.0
 ```
+
+The examples below use the internal registry; swap the reference for whichever
+you pull from.
 
 The chart generates no secrets — a value that changed on every `helm upgrade`
 would invalidate every session and make every encrypted column unreadable — so
@@ -356,11 +368,12 @@ helm test pm -n pm-test
 ```
 
 The chart lives at the repository root as ordinary Helm templates.
-`deployment/` holds only the npm scripts that TeamCity's shared helm build step
-drives, and is excluded from the package.
+`deployment/` holds only the npm scripts that both TeamCity and GitHub Actions
+drive, so lint, package and push are defined once; it is excluded from the
+package.
 
 [UPDATE.md](UPDATE.md) covers tracking a new PatchMon release, the chart
-version scheme, and how TeamCity publishes to `hub.fity.tech`.
+version scheme, and how the two CI systems publish to the three registries.
 
 ## Provenance and licence
 
