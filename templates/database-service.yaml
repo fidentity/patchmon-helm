@@ -1,0 +1,30 @@
+{{- if .Values.database.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "patchmon.database.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "patchmon.database.labels" . | nindent 4 }}
+  {{- if or .Values.database.service.annotations .Values.commonAnnotations }}
+  annotations:
+    {{- with .Values.commonAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.database.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+spec:
+  type: {{ .Values.database.service.type }}
+  # Headless: this is the StatefulSet's governing service, and a single
+  # PostgreSQL pod needs no load balancing.
+  clusterIP: None
+  ports:
+    - name: postgres
+      port: {{ .Values.database.service.port }}
+      targetPort: postgres
+      protocol: TCP
+  selector:
+    {{- include "patchmon.database.selectorLabels" . | nindent 4 }}
+{{- end }}

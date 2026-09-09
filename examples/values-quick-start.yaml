@@ -1,0 +1,59 @@
+# Evaluation values — single node, bundled PostgreSQL and Redis, placeholder
+# secrets. Do not use this in production: the secrets below are in plain text
+# and are the same for everyone who copies this file.
+#
+#   helm install patchmon . -n patchmon --create-namespace \
+#     -f examples/values-quick-start.yaml
+
+fullnameOverride: "patchmon"
+
+global:
+  # Remove to use the cluster's default StorageClass.
+  storageClass: ""
+
+server:
+  env:
+    serverProtocol: https
+    serverHost: patchmon-dev.example.com
+    serverPort: "443"
+
+  # Replace all three: openssl rand -hex 64
+  jwtSecret: "replace-me-jwt-secret"
+  aiEncryptionKey: "replace-me-ai-encryption-key"
+  sessionSecret: "replace-me-session-secret"
+
+database:
+  auth:
+    # openssl rand -hex 32
+    password: "replace-me-postgres-password"
+
+redis:
+  auth:
+    password: "replace-me-redis-password"
+
+# Leave enabled only if you need in-browser RDP to Windows hosts.
+guacd:
+  enabled: true
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "86400"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "86400"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+  hosts:
+    - host: patchmon-dev.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service:
+            name: server
+            port: 3000
+  tls:
+    - secretName: patchmon-dev-tls
+      hosts:
+        - patchmon-dev.example.com

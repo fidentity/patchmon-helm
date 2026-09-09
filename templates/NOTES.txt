@@ -1,0 +1,94 @@
+PatchMon {{ .Chart.AppVersion }} — chart {{ .Chart.Version }}
+Release {{ .Release.Name }} in namespace {{ .Release.Namespace }}.
+
+Components:
+{{- if .Values.database.enabled }}
+  * PostgreSQL         {{ .Values.database.image.tag }}
+{{- else }}
+  * PostgreSQL         external ({{ .Values.database.external.host }}:{{ .Values.database.external.port }}, sslmode={{ .Values.database.external.sslMode }})
+{{- end }}
+{{- if .Values.redis.enabled }}
+  * Redis              {{ .Values.redis.image.tag }}
+{{- else }}
+  * Redis              external ({{ .Values.redis.external.host }}:{{ .Values.redis.external.port }})
+{{- end }}
+{{- if .Values.server.enabled }}
+  * PatchMon server    {{ .Values.server.replicaCount }} replica(s), API + UI on port {{ .Values.server.containerPort }}
+{{- end }}
+{{- if .Values.guacd.enabled }}
+  * guacd              {{ .Values.guacd.image.tag }} (in-browser RDP enabled)
+{{- else if .Values.guacd.externalAddress }}
+  * guacd              external ({{ .Values.guacd.externalAddress }})
+{{- else }}
+  * guacd              disabled — in-browser RDP to Windows hosts will not work
+{{- end }}
+
+The server applies its schema migrations on first boot, so the first rollout
+can take a few minutes. Watch it:
+
+  kubectl rollout status statefulset/{{ include "patchmon.server.name" . }} -n {{ .Release.Namespace }} --timeout=10m
+  kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/component=server --tail=100 -f
+
+{{ if .Values.ingress.enabled -}}
+Reach PatchMon at:
+{{ range .Values.ingress.hosts }}
+  {{ if $.Values.ingress.tls }}https{{ else }}http{{ end }}://{{ .host }}
+{{- end }}
+{{- else }}
+No ingress is configured. To reach it locally:
+
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "patchmon.server.name" . }} {{ .Values.server.service.port }}:{{ .Values.server.service.port }}
+
+Then open http://localhost:{{ .Values.server.service.port }}
+{{- end }}
+
+--------------------------------------------------------------------------------
+AFTER THE FIRST LOGIN — set the Server URL
+--------------------------------------------------------------------------------
+Create the admin account, then go to Settings and set the Server URL to:
+
+  {{ include "patchmon.externalUrl" . }}
+
+PatchMon 2.x stores that URL in the database, not in the environment, and it
+defaults to http://localhost:3000. It is the address baked into every agent
+install command, so until it is correct your hosts cannot register.
+{{ if .Values.server.oidc.enabled }}
+--------------------------------------------------------------------------------
+OIDC
+--------------------------------------------------------------------------------
+Register this callback URL with {{ .Values.server.oidc.issuerUrl }}:
+
+  {{ include "patchmon.oidc.redirectUri" . }}
+
+Scopes requested: {{ .Values.server.oidc.scopes }}
+{{- if .Values.server.oidc.syncRoles }}
+Role sync is on, so the `groups` scope must actually return group claims.
+{{- end }}
+{{- if not .Values.server.oidc.enforceHttps }}
+Warning: server.oidc.enforceHttps is false. Only do this on a test deployment.
+{{- end }}
+{{- end }}
+{{ if gt (int .Values.server.replicaCount) 1 }}
+--------------------------------------------------------------------------------
+Multiple server replicas
+--------------------------------------------------------------------------------
+Agent connections, the browser SSH terminal, the RDP tunnel and live patch-run
+logs are websockets. Enable sticky sessions at your ingress, or they will
+reconnect against a different pod on every request:
+
+  nginx.ingress.kubernetes.io/affinity: "cookie"
+{{- end }}
+{{- if not .Values.server.startupProbe.enabled }}
+
+Warning: server.startupProbe is disabled. On a first install the liveness
+probe can restart the pod while migrations are still running.
+{{- end }}
+{{- if and .Values.secret.create (or (not .Values.database.auth.existingSecret) (not .Values.server.existingSecret)) }}
+
+Reminder: this release stores credentials in the Helm release values, so they
+are readable by anyone who can run `helm get values`. For production, move them
+into a Secret managed by SOPS, Sealed Secrets or External Secrets and set the
+matching `existingSecret` values.
+{{- end }}
+
+Docs: https://docs.patchmon.net  ·  Chart: https://github.com/fidentity/patchmon-helm

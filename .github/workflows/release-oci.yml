@@ -1,0 +1,70 @@
+# Publishes the chart to the GHCR OCI registry and creates a GitHub release.
+# The tag is the single source of truth for the version: Chart.yaml is rewritten
+# from it at build time, so the file in git does not have to carry the released
+# number.
+#
+#   git tag v2.0.1 && git push origin v2.0.1
+name: Release chart to GHCR
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  REGISTRY: ghcr.io
+  CHART_NAME: patchmon
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive version from tag
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing chart version $VERSION"
+
+      # Only the chart version follows the tag. appVersion tracks the PatchMon
+      # release the chart was written against and is set in Chart.yaml by hand,
+      # because the two move independently.
+      - name: Stamp the chart version
+        run: |
+          sed -i "s/^version:.*/version: ${{ steps.version.outputs.version }}/" Chart.yaml
+          grep -E '^(version|appVersion):' Chart.yaml
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} \
+            --username ${{ github.actor }} --password-stdin
+
+      - name: Package
+        run: helm package . --destination .helm-package
+
+      - name: Push to the OCI registry
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          helm push ".helm-package/${{ env.CHART_NAME }}-${{ steps.version.outputs.version }}.tgz" \
+            "oci://${{ env.REGISTRY }}/${OWNER}/charts"
+
+      - name: Create the GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: .helm-package/*.tgz
+          generate_release_notes: true
+
+      - name: Installation instructions
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "helm install patchmon oci://${{ env.REGISTRY }}/${OWNER}/charts/${{ env.CHART_NAME }} --version ${{ steps.version.outputs.version }}"

@@ -1,0 +1,13 @@
+# Local override files — never commit real secrets
+values-dev.yaml
+values-local.yaml
+secrets-dev.yaml
+*.dec.yaml
+
+# Helm build output
+*.tgz
+.cr-release-packages/
+.helm-package/
+charts/
+
+.DS_Store

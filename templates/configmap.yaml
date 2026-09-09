@@ -1,0 +1,23 @@
+{{- if .Values.configMap.create -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "patchmon.configMapName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "patchmon.labels" . | nindent 4 }}
+  {{- if or .Values.configMap.annotations .Values.commonAnnotations }}
+  annotations:
+    {{- with .Values.commonAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.configMap.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+data:
+  # Kept in a ConfigMap rather than inline in the pod spec so it can be read
+  # and corrected without a chart upgrade — a CORS origin that does not match
+  # the browser's is the most common cause of a blank page after login.
+  CORS_ORIGIN: {{ include "patchmon.corsOrigin" . | quote }}
+{{- end }}

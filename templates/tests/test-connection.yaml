@@ -1,0 +1,34 @@
+{{- if .Values.server.enabled -}}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "patchmon.fullname" . }}-test-connection
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "patchmon.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  {{- with .Values.global.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  containers:
+    - name: health
+      image: {{ include "patchmon.initContainer.image" . }}
+      command:
+        - wget
+        - -qO-
+        - http://{{ include "patchmon.server.name" . }}:{{ .Values.server.service.port }}/health
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+{{- end }}

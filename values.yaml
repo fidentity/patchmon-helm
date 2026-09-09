@@ -1,0 +1,795 @@
+# Default values for the PatchMon chart.
+#
+# PatchMon 2.x runs as a single Go binary (`patchmon-server`) that serves both
+# the API under /api/* and the embedded React SPA, on one port. Schema
+# migrations are applied automatically at boot. See README.md for the full
+# reference and docs/upgrading-1x-to-2x.md when coming from a 1.4.x chart.
+
+# -----------------------------------------------------------------------------
+# Global
+# -----------------------------------------------------------------------------
+global:
+  # Registry for every image in this chart. Set this to mirror all images from
+  # one private registry (air-gapped installs); it overrides the per-component
+  # `image.registry` values.
+  imageRegistry: ""
+  # Overrides server.image.tag only. Handy for pinning the PatchMon version
+  # from a single place.
+  imageTag: ""
+  # Pull secrets applied to every pod in this chart.
+  imagePullSecrets: []
+  # StorageClass for every PVC in this chart. Overrides the per-component
+  # `persistence.storageClass` values. Empty uses the cluster default.
+  storageClass: ""
+
+# -----------------------------------------------------------------------------
+# Naming
+# -----------------------------------------------------------------------------
+nameOverride: ""
+
+# Prefix for every resource name. Empty derives it from the release name.
+#
+# WARNING when upgrading from a chart whose default was "patchmon-prod": the
+# resource names are part of the StatefulSet volumeClaimTemplate names, so
+# leaving this empty renames the PVCs and the new pods come up with empty
+# volumes. Set it to the value your existing release used.
+fullnameOverride: ""
+
+# Labels and annotations added to every resource this chart creates.
+commonLabels: {}
+commonAnnotations: {}
+
+# Image for the wait-for-* and fix-permissions init containers. It only needs a
+# shell, `nc` and `chown`.
+initContainerImage:
+  registry: "docker.io"
+  repository: busybox
+  tag: "1.38"
+  pullPolicy: IfNotPresent
+
+# -----------------------------------------------------------------------------
+# PostgreSQL
+# -----------------------------------------------------------------------------
+database:
+  # Deploy the bundled single-node PostgreSQL StatefulSet.
+  #
+  # Set to false to use an external PostgreSQL (a managed service, or an
+  # operator such as CloudNativePG) and fill in `database.external` below. The
+  # bundled instance has no backups, no replication and no connection pooler;
+  # for production, an external database is the better choice.
+  enabled: true
+
+  image:
+    registry: "docker.io"
+    repository: postgres
+    # PatchMon is tested by upstream against 17-alpine and works on 18-alpine.
+    # Changing the major version of an existing deployment needs pg_upgrade or
+    # a dump/restore — the server will not start on a data directory written by
+    # a different major version.
+    tag: "18-alpine"
+    pullPolicy: IfNotPresent
+
+  auth:
+    database: patchmon_db
+    username: patchmon_user
+    # Required unless existingSecret is set. Also applies to an external
+    # database, where it is the password the server authenticates with.
+    password: ""
+    # Read the password from an existing Secret instead.
+    existingSecret: ""
+    existingSecretPasswordKey: "postgres-password"
+
+  # Connection details for an external PostgreSQL. Only read when
+  # `database.enabled` is false; `auth.database`, `auth.username` and the
+  # password above are used either way.
+  external:
+    host: ""
+    port: 5432
+    # One of: disable, allow, prefer, require, verify-ca, verify-full.
+    # `require` encrypts without verifying the server certificate;
+    # `verify-full` is the safe choice when you can supply a root CA.
+    sslMode: require
+    # Extra libpq query parameters appended to DATABASE_URL, e.g.
+    # "sslrootcert=/etc/ssl/pg/ca.crt&connect_timeout=10". Mount the CA
+    # yourself with server.extraVolumes / server.extraVolumeMounts.
+    extraParams: ""
+
+  replicaCount: 1
+  updateStrategy:
+    type: RollingUpdate
+
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  persistence:
+    enabled: true
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
+    size: 8Gi
+    annotations: {}
+
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+
+  service:
+    type: ClusterIP
+    port: 5432
+    annotations: {}
+
+  podAnnotations: {}
+  podLabels: {}
+
+  # UID/GID 70 is the `postgres` user in the alpine-based image.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 70
+    runAsGroup: 70
+    fsGroup: 70
+    fsGroupChangePolicy: OnRootMismatch
+    seccompProfile:
+      type: RuntimeDefault
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    # PostgreSQL writes its socket and lock files under /var/run/postgresql.
+    readOnlyRootFilesystem: false
+    runAsUser: 70
+    runAsGroup: 70
+    runAsNonRoot: true
+
+  initContainers:
+    # Runs a recursive chown as root over the data volume before startup.
+    # Enable temporarily when an existing PVC carries the wrong ownership
+    # (for example after the UID changed); fsGroup handles new volumes.
+    fixPermissions:
+      enabled: false
+
+  # Extra environment for the postgres container, e.g. shared_buffers tuning
+  # through POSTGRES_INITDB_ARGS. Full valueFrom syntax is supported.
+  extraEnv: []
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  priorityClassName: ""
+
+# -----------------------------------------------------------------------------
+# Redis
+# -----------------------------------------------------------------------------
+# Redis is not a cache PatchMon can do without: it carries the Asynq job
+# queues, bootstrap tokens, TFA lockout state and the cross-pod agent presence
+# registry. Persistence is enabled so queued jobs survive a restart.
+redis:
+  enabled: true
+
+  image:
+    registry: "docker.io"
+    repository: redis
+    # Upstream compose ships 7-alpine; 8-alpine is also supported.
+    tag: "8-alpine"
+    pullPolicy: IfNotPresent
+
+  auth:
+    # Required unless existingSecret is set.
+    password: ""
+    existingSecret: ""
+    existingSecretPasswordKey: "redis-password"
+
+  # Connection details for an external Redis. Only read when `redis.enabled`
+  # is false; the password above is used either way.
+  external:
+    host: ""
+    port: 6379
+    # Redis 6+ ACL username. Empty authenticates as `default`.
+    username: ""
+    tls:
+      enabled: false
+      # Set to false to skip server certificate verification (not advised).
+      verify: true
+      # Path to a PEM root CA inside the server container. Mount it with
+      # server.extraVolumes / server.extraVolumeMounts.
+      caFile: ""
+
+  replicaCount: 1
+  updateStrategy:
+    type: RollingUpdate
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+  persistence:
+    enabled: true
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
+    size: 2Gi
+    annotations: {}
+
+  # Appended to the redis-server command line, one argv token per list item —
+  # "--save 900 1" has to be three entries, not one. --requirepass is added by
+  # the chart from the password above.
+  #
+  # AOF is on because Redis carries the Asynq job queues: an RDB-only Redis can
+  # lose the last few minutes of queued work on an unclean restart.
+  extraFlags:
+    - --appendonly
+    - "yes"
+
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 20
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+
+  service:
+    type: ClusterIP
+    port: 6379
+    annotations: {}
+
+  podAnnotations: {}
+  podLabels: {}
+
+  # UID 999 / GID 1000 is the `redis` user in the alpine-based image.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 1000
+    fsGroup: 1000
+    fsGroupChangePolicy: OnRootMismatch
+    seccompProfile:
+      type: RuntimeDefault
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    runAsUser: 999
+    runAsGroup: 1000
+    runAsNonRoot: true
+
+  initContainers:
+    fixPermissions:
+      enabled: false
+
+  extraEnv: []
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  priorityClassName: ""
+
+# -----------------------------------------------------------------------------
+# PatchMon server
+# -----------------------------------------------------------------------------
+server:
+  enabled: true
+
+  image:
+    registry: "ghcr.io"
+    repository: patchmon/patchmon-server
+    # Pin an exact version. Leave in step with Chart.yaml appVersion, or set
+    # global.imageTag to override.
+    tag: "2.1.3"
+    pullPolicy: IfNotPresent
+
+  # Scaling past one replica is supported from PatchMon 2.0: there are no
+  # writeable local volumes, jobs are coordinated through Redis + Asynq, and
+  # agent presence is shared over Redis pub/sub. WebSocket traffic (agents,
+  # SSH terminal, RDP tunnel, patch-run log streams) needs sticky sessions at
+  # the ingress — see the `ingress.annotations` defaults below.
+  replicaCount: 1
+
+  # A StatefulSet is used rather than a Deployment so each pod keeps a stable
+  # hostname, which is what the agent presence registry keys on.
+  updateStrategy:
+    type: RollingUpdate
+
+  # OrderedReady starts and replaces pods one at a time; Parallel brings them
+  # all up at once, which makes rollouts quicker when replicaCount > 1.
+  # Immutable once the StatefulSet exists — changing it needs the StatefulSet
+  # deleted with --cascade=orphan and recreated.
+  podManagementPolicy: OrderedReady
+
+  # Port the server listens on inside the container (PORT).
+  containerPort: 3000
+
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 1Gi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+    behavior: {}
+
+  podDisruptionBudget:
+    enabled: false
+    minAvailable: 1
+    maxUnavailable: ""
+
+  # ---------------------------------------------------------------------------
+  # Server environment
+  #
+  # Most of these settings can also be changed at runtime in Settings in the
+  # web UI, which stores them in the database. Precedence is
+  # environment > database > built-in default, so a value set here becomes
+  # read-only in the UI. That is why the optional entries below are null: the
+  # comment records the application default, and setting one hands control of
+  # that setting to the chart. Booleans and 0 are passed through; null and ""
+  # are omitted from the pod spec entirely.
+  # ---------------------------------------------------------------------------
+  env:
+    # --- Public URL --------------------------------------------------------
+    # How users reach PatchMon. These drive the derived CORS origin, the OIDC
+    # redirect and post-logout URIs, and FRONTEND_URL.
+    #
+    # Note for 2.x: the URL PatchMon puts into agent install commands is the
+    # "Server URL" in Settings, stored in the database — not these variables.
+    # Set it once in the UI after the first login (it defaults to
+    # http://localhost:3000), otherwise the install commands it hands out will
+    # not resolve for your hosts.
+    serverProtocol: http
+    serverHost: patchmon.example.com
+    # Port users connect to, not the container port. Leave empty, or use 80 /
+    # 443, when behind an ingress on a standard port.
+    serverPort: ""
+    # CORS_ORIGIN must match the browser's origin exactly. Empty derives it
+    # from the three values above. Set it explicitly to allow more than one
+    # origin: comma-separated, no spaces.
+    corsOrigin: ""
+
+    # --- Logging -----------------------------------------------------------
+    enableLogging: true
+    # debug | info | warn | error
+    logLevel: info
+    # IANA timezone used for log timestamps and scheduled jobs.
+    timezone: UTC
+
+    # --- Reverse proxy and transport security ------------------------------
+    # Trust X-Forwarded-* headers. Required behind an ingress controller,
+    # otherwise the audit log records the ingress IP, rate limits key on it,
+    # and the OIDC HTTPS gate rejects requests.
+    trustProxy: true
+    # CIDRs or bare IPs of the proxies in front of PatchMon, comma-separated.
+    # Leave empty for the usual single ingress controller: PatchMon then uses
+    # the address the proxy appended, which a client cannot forge. Set it only
+    # for chained proxies (e.g. Cloudflare in front of nginx) so the original
+    # client IP resolves. Cannot be changed from the UI.
+    trustedProxyRanges: ""
+    # Send Strict-Transport-Security. Enable once TLS terminates in front.
+    enableHsts: false
+
+    # --- Database pool -----------------------------------------------------
+    dbConnectionLimit: null            # default 30
+    dbPoolTimeout: null                # default 20 (seconds)
+    dbConnectTimeout: null             # default 10 (seconds)
+    dbIdleTimeout: null                # default 300 (seconds)
+    dbMaxLifetime: null                # default 1800 (seconds)
+    dbTransactionLongTimeout: null     # default 60000 (ms)
+    # Startup-only: how long to wait for PostgreSQL to accept connections.
+    dbConnMaxAttempts: null            # default 30
+    dbConnWaitInterval: null           # default 2 (seconds)
+
+    # --- Redis -------------------------------------------------------------
+    redisDb: 0
+
+    # --- Rate limits (environment only, not settable in the UI) ------------
+    rateLimitWindowMs: null            # default 900000
+    rateLimitMax: null                 # default 5000
+    authRateLimitWindowMs: null        # default 600000
+    authRateLimitMax: null             # default 500
+    agentRateLimitWindowMs: null       # default 60000
+    agentRateLimitMax: null            # default 1000
+    passwordRateLimitWindowMs: null    # default 900000
+    passwordRateLimitMax: null         # default 5
+
+    # --- Request body limits ----------------------------------------------
+    # Accept sizes like 5mb, 512kb, 1gb. Raise complianceBodyLimit if large
+    # OpenSCAP reports are rejected with HTTP 413.
+    jsonBodyLimit: null                # default 5mb
+    agentUpdateBodyLimit: null         # default 5mb
+    complianceBodyLimit: null          # default 20mb
+    agentPingBodyLimit: null           # default 8kb
+
+    # --- Sessions, lockout and 2FA ----------------------------------------
+    jwtExpiresIn: null                 # default 1h
+    # true makes auth cookies browser-session cookies (cleared on browser exit).
+    authBrowserSessionCookies: null    # default false
+    maxLoginAttempts: null             # default 5
+    lockoutDurationMinutes: null       # default 15
+    # Minutes of user inactivity before the session ends. 0 disables.
+    sessionInactivityTimeoutMinutes: null   # default 30
+    maxTfaAttempts: null               # default 5
+    tfaLockoutDurationMinutes: null    # default 30
+    tfaRememberMeExpiresIn: null       # default 30d
+    tfaMaxRememberSessions: null       # default 5
+
+    # --- Password policy ---------------------------------------------------
+    passwordMinLength: null            # default 8
+    passwordRequireUppercase: null     # default true
+    passwordRequireLowercase: null     # default true
+    passwordRequireNumber: null        # default true
+    passwordRequireSpecial: null       # default true
+
+    # --- Users -------------------------------------------------------------
+    # Role given to newly created users: user | readonly | host_manager | admin
+    defaultUserRole: user
+
+    # --- Housekeeping ------------------------------------------------------
+    # Minutes a patch run may sit in "running" before it is marked timed_out.
+    # Clamped to a minimum of 5.
+    patchRunStallTimeoutMin: null      # default 30
+    # Days of Agent Activity history to keep. Clamped to 7..365.
+    agentReportsRetentionDays: null    # default 30
+
+  # ---------------------------------------------------------------------------
+  # Secrets
+  #
+  # The chart does not generate these — a generated secret would change on
+  # every `helm upgrade` and invalidate every session and every encrypted
+  # value. Generate them once with `openssl rand -hex 64` and keep them in
+  # SOPS, Sealed Secrets or External Secrets.
+  # ---------------------------------------------------------------------------
+
+  # Signs session JWTs. Required.
+  jwtSecret: ""
+  # Encrypts secrets at rest: AI provider credentials, agent bootstrap tokens,
+  # notification destination secrets. Losing it makes those unreadable.
+  # Required.
+  aiEncryptionKey: ""
+  # Fallback encryption key, used only when aiEncryptionKey is unset. Optional.
+  sessionSecret: ""
+
+  # Read the three above from an existing Secret instead of the values above.
+  existingSecret: ""
+  existingSecretJwtKey: "jwt-secret"
+  existingSecretAiEncryptionKey: "ai-encryption-key"
+  existingSecretSessionSecretKey: "session-secret"
+
+  # ---------------------------------------------------------------------------
+  # OIDC / SSO
+  # ---------------------------------------------------------------------------
+  oidc:
+    enabled: false
+    issuerUrl: ""
+    clientId: ""
+    clientSecret: ""
+    # Read the client secret from its own Secret. Falls back to
+    # server.existingSecret when empty.
+    existingSecret: ""
+    existingSecretClientSecretKey: "oidc-client-secret"
+
+    # Callback URL registered with the identity provider. Empty derives
+    # <externalUrl>/api/v1/auth/oidc/callback.
+    redirectUri: ""
+    # Where the provider returns the user after logout. Empty derives
+    # <externalUrl>/login.
+    postLogoutUri: ""
+
+    # Space-separated scopes. `groups` is needed for syncRoles; some providers
+    # need `offline_access` to issue a refresh token.
+    scopes: "openid profile email offline_access groups"
+    buttonText: "Login with SSO"
+    autoCreateUsers: true
+    defaultRole: "user"
+    # Re-apply role from the group claims on every login. Requires the group
+    # mapping below.
+    syncRoles: true
+    disableLocalAuth: false
+    # Seconds an in-flight authorization request stays valid.
+    sessionTtl: 600
+    # Reject non-HTTPS redirect URIs. Only turn this off for a local test
+    # deployment served over plain HTTP.
+    enforceHttps: true
+    # Accept identities whose email the provider has not marked verified.
+    trustUnverifiedEmail: false
+
+    # Provider group names mapped to PatchMon roles. Empty entries are skipped.
+    groups:
+      superadmin: ""
+      admin: ""
+      hostManager: ""
+      user: ""
+      readonly: ""
+
+  # ---------------------------------------------------------------------------
+  # Probes
+  #
+  # GET /health reports on PostgreSQL and Redis as well as the process: it
+  # answers 503 while either is unreachable. That makes it the right signal for
+  # startup and readiness, and the wrong one for liveness — a 30-second
+  # database restart would otherwise fail liveness on every server pod at once
+  # and restart them all, turning a blip into an outage. Liveness therefore
+  # only checks that the listener accepts connections.
+  #
+  # The first boot applies the schema migrations, which is what the startup
+  # probe's budget (failureThreshold x periodSeconds, 400s by default) covers.
+  # Liveness and readiness do not start until it has succeeded.
+  # ---------------------------------------------------------------------------
+  startupProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 40
+
+  livenessProbe:
+    enabled: true
+    # tcpSocket or httpGet. Read the note above before choosing httpGet.
+    type: tcpSocket
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  readinessProbe:
+    enabled: true
+    type: httpGet
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+  service:
+    type: ClusterIP
+    port: 3000
+    annotations: {}
+    # Only used when type is NodePort or LoadBalancer.
+    nodePort: ""
+    loadBalancerIP: ""
+    loadBalancerSourceRanges: []
+    # Keeps a client on the same pod when running several replicas without an
+    # ingress. Set to ClientIP for websocket stability in that case.
+    sessionAffinity: None
+
+  podAnnotations: {}
+  podLabels: {}
+
+  # The image runs as UID/GID 1000 and needs no writeable volume: agent
+  # binaries and SCAP content ship read-only in the image, and branding assets
+  # live in the database.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    runAsNonRoot: true
+
+  initContainers:
+    # Block startup until the dependency accepts TCP connections. The server
+    # retries on its own, so these only keep the log clean — disable them if
+    # your network policy forbids the probe.
+    waitForDatabase:
+      enabled: true
+    waitForRedis:
+      enabled: true
+    waitForGuacd:
+      enabled: true
+
+  # Extra environment variables. Full container env syntax, so valueFrom works:
+  #   - name: SMTP_PASSWORD
+  #     valueFrom:
+  #       secretKeyRef: {name: smtp, key: password}
+  # Use this for the settings this chart does not model, e.g. ENABLE_PPROF.
+  extraEnv: []
+
+  # Extra envFrom sources, e.g. a ConfigMap or Secret of raw PatchMon
+  # environment variables:
+  #   - secretRef: {name: patchmon-extra-env}
+  extraEnvFrom: []
+
+  # Extra volumes and mounts, e.g. a private CA for the OIDC issuer or for
+  # PostgreSQL/Redis TLS.
+  extraVolumes: []
+  extraVolumeMounts: []
+
+  # Sidecar containers running alongside the server.
+  sidecars: []
+  # Extra init containers, appended after the wait-for-* ones.
+  extraInitContainers: []
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  priorityClassName: ""
+  terminationGracePeriodSeconds: 60
+
+# -----------------------------------------------------------------------------
+# guacd (Apache Guacamole proxy daemon)
+# -----------------------------------------------------------------------------
+# Only needed for in-browser RDP to Windows hosts. The server image ships no
+# guacd binary, so this runs as its own pod. Disable it if you do not use RDP;
+# nothing else depends on it.
+guacd:
+  enabled: true
+
+  image:
+    registry: "docker.io"
+    repository: guacamole/guacd
+    tag: "1.6.0"
+    pullPolicy: IfNotPresent
+
+  # Address the server dials when guacd.enabled is false but a guacd is
+  # reachable elsewhere, e.g. "guacd.shared.svc.cluster.local:4822". Leaving
+  # both this and `enabled` unset disables RDP.
+  externalAddress: ""
+
+  replicaCount: 1
+  updateStrategy:
+    type: RollingUpdate
+
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+  service:
+    type: ClusterIP
+    port: 4822
+    annotations: {}
+
+  podAnnotations: {}
+  podLabels: {}
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    runAsNonRoot: true
+
+  # guacd writes per-connection scratch files under /tmp; the chart mounts an
+  # emptyDir there so the root filesystem can stay read-only.
+  tmpSizeLimit: 64Mi
+
+  extraEnv: []
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  priorityClassName: ""
+
+# -----------------------------------------------------------------------------
+# Ingress
+# -----------------------------------------------------------------------------
+# In 2.x everything is one backend: the SPA and /api/* share port 3000, so a
+# single `/` path is all that is needed.
+ingress:
+  enabled: false
+  className: ""
+  # The long timeouts matter: PatchMon holds websockets open for agent
+  # connections, the browser SSH terminal, the RDP tunnel and live patch-run
+  # logs. A default 60s read timeout drops them every minute.
+  #
+  # These keys are for ingress-nginx. On Traefik websockets work untouched;
+  # for other controllers translate the equivalents.
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "86400"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "86400"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    # Required for websocket stability when server.replicaCount > 1.
+    # nginx.ingress.kubernetes.io/affinity: "cookie"
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: patchmon.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          # `service.name` is the component: "server". It is prefixed with the
+          # release fullname when rendered.
+          service:
+            name: server
+            port: 3000
+  tls: []
+  #  - secretName: patchmon-tls
+  #    hosts:
+  #      - patchmon.example.com
+
+# -----------------------------------------------------------------------------
+# ServiceAccount
+# -----------------------------------------------------------------------------
+# PatchMon talks to no Kubernetes API, so the account needs no RBAC and its
+# token is not mounted.
+serviceAccount:
+  create: true
+  automountServiceAccountToken: false
+  annotations: {}
+  name: ""
+
+# -----------------------------------------------------------------------------
+# ConfigMap / Secret
+# -----------------------------------------------------------------------------
+configMap:
+  create: true
+  annotations: {}
+
+secret:
+  # Set to false when every credential comes from an existingSecret.
+  create: true
+  annotations: {}
+
+# Roll the server pods when the ConfigMap or Secret this chart renders changes.
+# Turn off if you use a reloader controller, or if a checksum annotation
+# creates unwanted diffs in GitOps.
+rollOnConfigChange: true

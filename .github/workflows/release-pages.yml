@@ -1,0 +1,84 @@
+# Publishes a classic Helm repository on the gh-pages branch, so the chart can
+# be installed with `helm repo add`. The version comes from Chart.yaml, so a
+# push that does not change it republishes the same package and commits
+# nothing.
+#
+# Enable GitHub Pages for the gh-pages branch once, under Settings > Pages.
+name: Release chart to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Chart.yaml'
+      - 'values.yaml'
+      - 'templates/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: helm-pages
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config --global user.name "$GITHUB_ACTOR"
+          git config --global user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - name: Package chart
+        run: |
+          mkdir -p .cr-release-packages
+          helm package . --destination .cr-release-packages
+
+      - name: Check out gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: gh-pages
+          fetch-depth: 0
+        continue-on-error: true
+
+      - name: Create gh-pages if it does not exist
+        run: |
+          if [ ! -d gh-pages/.git ]; then
+            mkdir -p gh-pages
+            cd gh-pages
+            git init
+            git checkout -b gh-pages
+            git remote add origin \
+              "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          fi
+
+      - name: Rebuild the repository index
+        run: |
+          URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+          if [ -f gh-pages/index.yaml ]; then
+            helm repo index .cr-release-packages --url "$URL" --merge gh-pages/index.yaml
+          else
+            helm repo index .cr-release-packages --url "$URL"
+          fi
+          cp .cr-release-packages/*.tgz gh-pages/
+          cp .cr-release-packages/index.yaml gh-pages/
+
+      - name: Push
+        run: |
+          cd gh-pages
+          git add .
+          git diff --staged --quiet && echo "chart version unchanged, nothing to publish" && exit 0
+          git commit -m "Publish patchmon $(grep '^version:' ../Chart.yaml | awk '{print $2}')"
+          git push origin gh-pages
