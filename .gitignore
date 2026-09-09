@@ -12,4 +12,7 @@ charts/
 # npm
 node_modules/
 
+# Pages branch checkout, made by the release workflow
+.pages/
+
 .DS_Store

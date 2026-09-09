@@ -117,7 +117,7 @@ service repository would also list its `docker build`.
 | Workflow | Trigger | Does |
 |---|---|---|
 | `lint.yml` | push to `main`, pull requests | `npm run lint`, plus `kubeconform` schema validation |
-| `release.yml` | tag `v*.*.*`, or manual dispatch | packages, pushes to GHCR, rebuilds the gh-pages index, creates a GitHub release |
+| `release.yml` | tag `v*.*.*`, or manual dispatch | packages, pushes to GHCR, rebuilds the Pages index, creates a GitHub release |
 
 `lint.yml` overlaps with TeamCity, which lints in `prebuild:helm` and reports
 through GitHub Checks. It is the same `npm run lint` rather than a second set of
@@ -130,8 +130,10 @@ A manual dispatch takes a version and checks out `v<version>`, not the branch
 it was started from, so re-publishing after a registry failure cannot put a
 different tree under an existing version.
 
-**One-time setup:** enable GitHub Pages for the `gh-pages` branch under
-Settings → Pages. The workflow creates the branch on its first run.
+The classic repository is served by GitHub Pages from the **`helm` branch at
+its root** — already configured, so the branch name in `release.yml` is not a
+free choice. The workflow copies the new package onto that branch and rebuilds
+`index.yaml` from the packages present; it leaves other files there alone.
 
 ### Versions
 

@@ -7,6 +7,10 @@
 #   oci://hub.fity.tech/fidentity-charts   TeamCity, internal cluster pulls
 #   oci://ghcr.io/<owner>/charts           this workflow, OCI consumers
 #   https://<owner>.github.io/<repo>       this workflow, `helm repo add`
+#
+# The classic repository is served by GitHub Pages from the `helm` branch at
+# its root — that is the repository's actual Pages configuration, so the branch
+# name below is not a free choice.
 name: Release chart
 
 on:
@@ -29,7 +33,7 @@ permissions:
   packages: write
 
 # Serialised: both publish steps write to shared state (the OCI registry and
-# the gh-pages index), and a concurrent index rebuild would drop a chart.
+# the Pages index), and a concurrent index rebuild would drop a chart.
 concurrency:
   group: chart-release
   cancel-in-progress: false
@@ -87,9 +91,11 @@ jobs:
           CHART_REGISTRY="oci://ghcr.io/${OWNER}/charts" \
             npm run publish "${CHART_NAME}-${{ steps.version.outputs.version }}.tgz"
 
-      - name: Publish to the gh-pages Helm repository
+      - name: Publish to the Pages Helm repository
         env:
           TGZ: ${{ env.CHART_NAME }}-${{ steps.version.outputs.version }}.tgz
+          # The branch GitHub Pages is configured to serve, at its root.
+          PAGES_BRANCH: helm
         run: |
           set -eu
           OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
@@ -99,23 +105,26 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          if git ls-remote --exit-code --heads "$REPO_URL" gh-pages >/dev/null 2>&1; then
-            git clone --branch gh-pages --single-branch --depth 1 "$REPO_URL" gh-pages
+          # Checked out into .pages rather than a directory named after the
+          # branch, so nothing in the step reads as the helm binary.
+          if git ls-remote --exit-code --heads "$REPO_URL" "$PAGES_BRANCH" >/dev/null 2>&1; then
+            git clone --branch "$PAGES_BRANCH" --single-branch --depth 1 "$REPO_URL" .pages
           else
-            echo "gh-pages does not exist yet, creating it"
-            mkdir gh-pages
-            cd gh-pages
-            git init -b gh-pages
+            echo "branch $PAGES_BRANCH does not exist yet, creating it"
+            mkdir .pages
+            cd .pages
+            git init -b "$PAGES_BRANCH"
             git remote add origin "$REPO_URL"
             cd ..
           fi
 
-          cp "deployment/dist/${TGZ}" gh-pages/
+          cp "deployment/dist/${TGZ}" .pages/
 
-          cd gh-pages
+          cd .pages
           # Rebuilt from the packages actually present rather than merged into
           # the old index, so a hand-edited or half-written index cannot
-          # survive and reference a chart that is no longer there.
+          # survive and reference a chart that is no longer there. Only *.tgz
+          # is indexed, so other files on the branch are left alone.
           helm repo index . --url "$PAGES_URL"
 
           git add .
@@ -124,7 +133,7 @@ jobs:
             exit 0
           fi
           git commit -m "Publish ${CHART_NAME} ${{ steps.version.outputs.version }}"
-          git push origin gh-pages
+          git push origin "$PAGES_BRANCH"
 
       - name: Create the GitHub release
         if: startsWith(github.ref, 'refs/tags/')
