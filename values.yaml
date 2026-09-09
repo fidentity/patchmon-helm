@@ -111,7 +111,13 @@ database:
     storageClass: ""
     accessModes:
       - ReadWriteOnce
-    size: 8Gi
+    # 5Gi to match the chart this one descends from. A StatefulSet's
+    # volumeClaimTemplates are immutable, so a different default here makes an
+    # in-place `helm upgrade` from that chart fail with "updates to statefulset
+    # spec for fields other than ... are forbidden". Raise it for a new
+    # install; to grow an existing one, expand the PVC and then delete the
+    # StatefulSet with --cascade=orphan so it is recreated against the volume.
+    size: 5Gi
     annotations: {}
 
   livenessProbe:
@@ -227,7 +233,8 @@ redis:
     storageClass: ""
     accessModes:
       - ReadWriteOnce
-    size: 2Gi
+    # 5Gi for the same immutability reason as the database volume above.
+    size: 5Gi
     annotations: {}
 
   # Appended to the redis-server command line, one argv token per list item —

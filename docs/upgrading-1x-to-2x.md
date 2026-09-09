@@ -63,6 +63,25 @@ unreferenced. The database is not deleted, but PatchMon will look empty.
     # If they are named postgres-data-patchmon-prod-database-0, then set:
     fullnameOverride: "patchmon-prod"
 
+### 1b. Keep the volume sizes you already have
+
+`database.persistence.size` and `redis.persistence.size` feed the StatefulSet
+`volumeClaimTemplates`, which are immutable — an upgrade that changes them is
+rejected outright:
+
+```
+updates to statefulset spec for fields other than 'replicas', 'ordinals',
+'template', 'updateStrategy', 'persistentVolumeClaimRetentionPolicy' and
+'minReadySeconds' are forbidden
+```
+
+This chart's defaults are deliberately the same 5Gi the 1.4.x chart used, so
+doing nothing is correct. If you overrode either, keep the override.
+
+```bash
+kubectl get pvc -n <namespace> -o custom-columns=NAME:.metadata.name,SIZE:.spec.resources.requests.storage
+```
+
 ### 2. Rewrite your values
 
 Rename `backend:` to `server:`, delete `frontend:` entirely, and collapse the

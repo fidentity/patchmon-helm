@@ -166,7 +166,7 @@ commented throughout and is the complete reference.
 | `database.external.host` / `.port` | Required when `enabled` is false. | `""` / `5432` |
 | `database.external.sslMode` | `disable`…`verify-full`. Applied to external only. | `require` |
 | `database.external.extraParams` | Extra libpq parameters for `DATABASE_URL`. | `""` |
-| `database.persistence.size` | PVC size. | `8Gi` |
+| `database.persistence.size` | PVC size. Immutable after install — see below. | `5Gi` |
 
 #### Redis
 
@@ -178,7 +178,7 @@ commented throughout and is the complete reference.
 | `redis.external.host` / `.port` / `.username` | Required when `enabled` is false. | `""` / `6379` / `""` |
 | `redis.external.tls.enabled` / `.verify` / `.caFile` | TLS to an external Redis. | `false` / `true` / `""` |
 | `redis.extraFlags` | Extra `redis-server` arguments, one token per entry. | `["--appendonly","yes"]` |
-| `redis.persistence.size` | PVC size. | `2Gi` |
+| `redis.persistence.size` | PVC size. Immutable after install — see below. | `5Gi` |
 
 #### guacd, ingress, service account
 
@@ -200,6 +200,24 @@ it — including changing it *away from* the `patchmon-prod` default that the
 1.4.x chart shipped — makes the pods claim new, empty volumes while the old
 PVCs sit unreferenced. Check `kubectl get pvc` before your first upgrade and
 set it to match.
+
+### Volume sizes are fixed at install time
+
+`database.persistence.size` and `redis.persistence.size` feed the StatefulSet
+`volumeClaimTemplates`, which Kubernetes will not let you change. Setting a
+different value on an existing release makes `helm upgrade` fail:
+
+```
+updates to statefulset spec for fields other than 'replicas', 'ordinals',
+'template', 'updateStrategy', 'persistentVolumeClaimRetentionPolicy' and
+'minReadySeconds' are forbidden
+```
+
+Pick the size at install time. To grow one later, expand the PVC itself (if the
+StorageClass allows it) and then delete the StatefulSet with
+`--cascade=orphan` so the next upgrade recreates it against the existing
+volume. The defaults match the chart this one descends from, so an in-place
+upgrade from it needs no change here.
 
 ### External PostgreSQL and Redis
 

@@ -1,6 +1,6 @@
 ---
 name: patchmon-chart
-description: Maintain, verify or release the PatchMon Helm chart in this repository — tracking a new upstream PatchMon version, adding or changing values, debugging what the chart renders, or publishing it. Use whenever work touches Chart.yaml, values.yaml, templates/, deployment/ or the CI that publishes the chart.
+description: Maintain, verify or release the PatchMon Helm chart in this repository — tracking a new upstream PatchMon version, adding or changing values, debugging what the chart renders, or publishing it. Also covers how the chart is consumed by infrastructure-apps/apps/patchmon. Use whenever work touches Chart.yaml, values.yaml, templates/, deployment/, the CI that publishes the chart, or the values that deployment repo passes in.
 ---
 
 # Maintaining the PatchMon Helm chart
@@ -21,6 +21,7 @@ a change to a public API, not an internal detail.
 | `UPDATE.md` | the release procedure, version scheme and publishing matrix |
 | `docs/upgrading-1x-to-2x.md` | what changed from the 1.4.x chart, and the migration traps |
 | `NOTICE` | provenance — this is a GPL-3.0 derivative of an archived community chart |
+| `~/fidentity/infrastructure-apps/apps/patchmon` | the only consumer — what actually gets deployed, and with which values |
 
 ## Repository shape
 
@@ -88,6 +89,74 @@ needs.
    dump/restore — so it belongs in a MAJOR chart bump with a README note.
 
 5. Verify (see below), then commit on a feature branch and open a PR.
+
+## The consumer: infrastructure-apps
+
+The chart is deployed by **`~/fidentity/infrastructure-apps/apps/patchmon`**,
+which is cdk8s TypeScript synthesizing an ArgoCD Application. Read it before
+changing anything in `values.yaml`: it is the only known consumer, so a values
+rename is a breaking change to that repo specifically.
+
+| File | Holds |
+|---|---|
+| `main.ts` | the live instance — domain, chart version, secret names, external database |
+| `components/helm.ts` | the `Helm` construct and the whole values block |
+| `components/secrets.ts` | ExternalSecret pulling from the `k8s-services-infra` vault |
+| `components/ingress-components.ts` | Traefik middlewares, IP allowlist |
+| `components/compliance-prune-cronjob.ts` | raw-SQL prune of `compliance_scans` / `compliance_results` |
+| `types/patchmon.ts` | the props interface mirroring the values it sets |
+
+Live shape as of chart 2.0.0:
+
+- `sentinel.infra.fity.tech`, ArgoCD project `fity-apps`, namespace
+  `fity-apps-patchmon-main`, `fullnameOverride: patchmon-main`
+- **external PostgreSQL on Aiven**, `sslmode` on — this is why the 1.4.2 fork
+  grew external-database support in the first place
+- **bundled Redis**, storage class `fity-nfs`
+- images from the `hub.fity.tech/k8s-cache-*` mirrors, set per component
+  through `image.registry` rather than `global.imageRegistry`
+- Traefik, not ingress-nginx, so the chart's default nginx timeout annotations
+  do not apply — the middlewares carry that
+- OIDC against Zitadel with `disableLocalAuth: true` and `patchmon_*` groups
+- secret keys use **underscores** (`jwt_secret`, `ai_encryption_key`,
+  `postgres_password`, `redis_password`, `oidc_client_secret`), overridden via
+  the `existingSecret*Key` values
+
+The compliance prune CronJob lives there rather than in the chart on purpose:
+it is an operational workaround for unbounded compliance-table growth, and it
+runs `DELETE` against the production database. Never run it by hand.
+
+### It is still on the 1.4.x values shape
+
+`components/helm.ts` targets chart `v1.3.0` from
+`https://bacht-fidi.github.io/PatchMon-helm/` and still passes `backend:` and
+`frontend:` blocks. It will not work against this chart until migrated. The
+delta, which is `docs/upgrading-1x-to-2x.md` applied to that file:
+
+| In `helm.ts` today | Becomes |
+|---|---|
+| `repo: 'https://bacht-fidi.github.io/PatchMon-helm/'` | `https://fidentity.github.io/patchmon-helm/`, or `oci://hub.fity.tech/fidentity-charts` |
+| `chartVersion: 'v1.3.0'` | `2.0.0` — Helm tolerates a leading `v`, but the index carries bare SemVer |
+| `backend:` + `frontend:` blocks | one `server:` block |
+| ingress `/`→frontend:3000 and `/api`→backend:3001 | one `/`→`server`:3000 |
+| `database.auth.customHost/customPort/ssl` | `database.external.host/port/sslMode` |
+| `backend.env.trustProxy: '10.0.0.0/8,...'` | `server.env.trustProxy: true` — a bool now. Leave `trustedProxyRanges` empty: Traefik is a single proxy |
+| `backend.env.autoCreateRolePermissions`, `logToConsole` | drop — 2.x reads neither |
+| `backend.persistence` | drop — no PVC in 2.x |
+| `imageTag` / `version` props | `2.1.3` |
+
+Two things to fix while in there:
+
+- `database` and `redis` both pass **`ressources`**, misspelled. Helm ignores
+  unknown values silently, so those limits have never been applied — the Redis
+  pod is running on this chart's defaults, not the intended 2Gi.
+- Redis persistence is not set, so it takes the chart default. That default is
+  deliberately 5Gi to match the old chart, because
+  `volumeClaimTemplates` are immutable and a change would make the upgrade
+  fail. Do not "tidy" it to a smaller number.
+
+Migrating that repo is a separate change in a separate repository — do not
+edit it from here without being asked.
 
 ## Verification
 
