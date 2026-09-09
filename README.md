@@ -27,12 +27,19 @@ what the agent presence registry keys on.
 
 ## Install
 
+The chart is published to `oci://hub.fity.tech/fidentity-charts`, so log in to
+the registry first:
+
+```bash
+helm registry login hub.fity.tech
+```
+
 The chart generates no secrets — a value that changed on every `helm upgrade`
 would invalidate every session and make every encrypted column unreadable — so
 four of them have to be supplied.
 
 ```bash
-helm install patchmon oci://ghcr.io/fidentity/charts/patchmon \
+helm install patchmon oci://hub.fity.tech/fidentity-charts/patchmon \
   --namespace patchmon --create-namespace \
   --set server.env.serverHost=patchmon.example.com \
   --set server.env.serverProtocol=https \
@@ -54,7 +61,7 @@ kubectl create secret generic patchmon-secrets -n patchmon \
   --from-literal=ai-encryption-key="$(openssl rand -hex 64)" \
   --from-literal=session-secret="$(openssl rand -hex 64)"
 
-helm install patchmon oci://ghcr.io/fidentity/charts/patchmon \
+helm install patchmon oci://hub.fity.tech/fidentity-charts/patchmon \
   -n patchmon -f examples/values-prod.yaml
 ```
 
@@ -282,7 +289,7 @@ schema migrations get before Kubernetes gives up.
 ### Upgrading
 
 ```bash
-helm upgrade patchmon oci://ghcr.io/fidentity/charts/patchmon \
+helm upgrade patchmon oci://hub.fity.tech/fidentity-charts/patchmon \
   -n patchmon -f my-values.yaml --wait --timeout 15m
 ```
 
@@ -338,8 +345,8 @@ kubectl delete pvc -n patchmon -l app.kubernetes.io/instance=patchmon
 ## Development
 
 ```bash
-helm lint . --set server.jwtSecret=x --set server.aiEncryptionKey=y \
-  --set database.auth.password=p --set redis.auth.password=r
+# lint and render every example — the same script the build runs
+cd deployment && npm run lint && cd ..
 
 helm template patchmon . -f examples/values-prod.yaml
 
@@ -348,8 +355,12 @@ helm install pm . -n pm-test --create-namespace \
 helm test pm -n pm-test
 ```
 
+The chart lives at the repository root as ordinary Helm templates.
+`deployment/` holds only the npm scripts that TeamCity's shared helm build step
+drives, and is excluded from the package.
+
 [UPDATE.md](UPDATE.md) covers tracking a new PatchMon release, the chart
-version scheme, and how the two release workflows publish.
+version scheme, and how TeamCity publishes to `hub.fity.tech`.
 
 ## Provenance and licence
 

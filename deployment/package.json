@@ -1,0 +1,14 @@
+{
+  "name": "patchmon-helm",
+  "version": "0.0.0-dev",
+  "private": true,
+  "license": "GPL-3.0",
+  "description": "Build and publish wrapper for the PatchMon Helm chart. The chart itself lives in the repository root; this directory only exists because fityHelmBuildStep runs in ./deployment and drives npm.",
+  "scripts": {
+    "lint": "sh ./chart-lint.sh",
+    "clean": "rm -rf dist",
+    "prebuild:helm": "npm run lint",
+    "build:helm": "sh -c 'helm package .. --version \"${0#--chart-version=}\" --destination dist'",
+    "publish": "sh -c 'helm push dist/$0 oci://hub.fity.tech/fidentity-charts'"
+  }
+}

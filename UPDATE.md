@@ -32,15 +32,10 @@
    (`pg_upgrade` or dump/restore), so it belongs in a MAJOR chart bump with a
    note in the README.
 
-5. Lint and render every example:
+5. Lint and render every example — the same script CI runs:
 
    ```bash
-   helm lint . --set server.jwtSecret=x --set server.aiEncryptionKey=y \
-     --set database.auth.password=p --set redis.auth.password=r
-
-   for f in examples/*.yaml; do
-     echo "== $f"; helm template patchmon . -f "$f" >/dev/null || echo FAILED
-   done
+   cd deployment && npm run lint
    ```
 
 6. Install into a scratch namespace and check the rollout, then `helm test`:
@@ -68,17 +63,76 @@ probe fix; `2.0.0 -> 3.0.0` for PostgreSQL 18 -> 19.
 
 ## Releasing
 
-Two workflows publish the chart, and both derive the version from the tag, so
-`Chart.yaml` in git does not have to carry the released number:
+The chart is built and published by TeamCity, following the same pattern as the
+other fidentity service repositories: `.teamcity/settings.kts` composes the
+shared Kotlin DSL from `fidentity/infrastructure` (`teamcity/teamcity-lib`).
 
-- `.github/workflows/release-pages.yml` — on push to `main`, packages the chart
-  and publishes a classic Helm repository on the `gh-pages` branch.
-- `.github/workflows/release-oci.yml` — on a `v*.*.*` tag, pushes to the GHCR
-  OCI registry and creates a GitHub release.
+There is no image build here — this repository ships only the chart — so the
+`release` job depends on the `helm build` job alone, where a service repository
+would also list its `docker build`.
+
+### What the build does
+
+`fityHelmBuildStep` runs in `deployment/` and drives npm, so the chart-specific
+work lives in `deployment/package.json`:
+
+| npm script | What it does |
+|---|---|
+| `prebuild:helm` | `helm lint` and renders every example (`deployment/chart-lint.sh`) |
+| `build:helm` | `helm package .. --version <chart-version> --destination dist` |
+| `publish` | `helm push dist/<tgz> oci://hub.fity.tech/fidentity-charts` |
+
+The chart itself stays at the repository root as ordinary Helm templates;
+`deployment/` exists only because the shared build step's working directory is
+fixed. `deployment/` and `.teamcity/` are in `.helmignore`, so neither ends up
+inside the package — which matters, because the build step writes an `.npmrc`
+carrying a registry token into that directory.
+
+### Versions
+
+The chart version comes from `fityGoRetagStep`, not from `Chart.yaml`:
+`helm package --version` overrides it at build time. `appVersion` is *not*
+overridden and stays hand-maintained in `Chart.yaml`, because the chart and
+PatchMon move independently.
+
+Each build publishes twice — once under `%image.version%` and once under
+`%image.tag%`:
+
+| Branch or tag | `image.version` (immutable) | `image.tag` (moving) |
+|---|---|---|
+| `main` | `0.0.<build>-dev` | `0.0.0-dev` |
+| feature branch / PR | `0.0.<build>-dev-<branch>` | `0.0.0-dev-<branch>` |
+| tag `v2.0.1` | `2.0.1` | `2.0.1` |
+
+So a release is a git tag:
 
 ```bash
 git tag v2.0.1 && git push origin v2.0.1
 ```
 
-Enable GitHub Pages for the `gh-pages` branch once, so the classic repository
-is served.
+One caveat inherited from the shared step: `helm package --version` validates
+SemVer. A `release_x.y` branch resolves `image.tag` to `release-x.y`, which is
+not valid SemVer and will fail the second publish. Release from tags.
+
+### Installing a published chart
+
+```bash
+helm registry login hub.fity.tech
+helm install patchmon oci://hub.fity.tech/fidentity-charts/patchmon \
+  --version 2.0.1 -n patchmon --create-namespace -f my-values.yaml
+```
+
+### Running the same checks locally
+
+```bash
+cd deployment
+npm run lint                                  # what prebuild:helm runs in CI
+npm run build:helm -- --chart-version=0.0.0-dev
+```
+
+`kubeconform` is not in the build image, so schema validation is a local step:
+
+```bash
+helm template patchmon . -f examples/values-prod.yaml \
+  | kubeconform -strict -summary -kubernetes-version 1.30.0 -
+```

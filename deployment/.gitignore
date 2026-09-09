@@ -1,0 +1,5 @@
+node_modules/
+dist/
+
+# Written by fityHelmBuildStep at build time and carries a registry token.
+.npmrc

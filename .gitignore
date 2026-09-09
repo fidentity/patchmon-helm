@@ -6,8 +6,10 @@ secrets-dev.yaml
 
 # Helm build output
 *.tgz
-.cr-release-packages/
-.helm-package/
+dist/
 charts/
+
+# npm
+node_modules/
 
 .DS_Store
