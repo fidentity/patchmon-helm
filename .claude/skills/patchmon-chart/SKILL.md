@@ -173,6 +173,19 @@ restart fails liveness on every replica at once and restarts them all — a blip
 becomes an outage. Liveness is `tcpSocket`; `/health` drives readiness and the
 startup probe. Do not "simplify" them to match.
 
+**The httpGet probes must send `Host: localhost`.** PatchMon's CORS middleware
+enforces the Host header, not just Origin, and answers
+`403 {"code":"host_mismatch"}` for any Host that is neither loopback nor built
+from `CORS_ORIGIN` (`internal/middleware/cors.go`). The kubelet sends the pod
+IP, so without the header the startup probe fails, the container is killed
+when the budget runs out, and the pod crashloops — while traffic through the
+ingress is fine, which makes it look like a probe misconfiguration. Upstream
+never sees it: their compose health check runs inside the container against
+localhost. The header lives in `patchmon.server.probeAction`, which the
+startup probe also goes through; do not inline an `httpGet` block that skips
+it. Kubernetes' own `httpGet.host` field is the wrong fix — it points the
+kubelet at the node's loopback, not the pod's.
+
 **`.helmignore` leaks.** `deployment/`, `.teamcity/`, `.github/` and `.claude/`
 are excluded for a reason — `fityHelmBuildStep` writes an `.npmrc` carrying a
 registry token into `deployment/`. This file has been broken twice by rewriting
