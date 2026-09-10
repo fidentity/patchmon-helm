@@ -127,7 +127,11 @@ jobs:
           # is indexed, so other files on the branch are left alone.
           helm repo index . --url "$PAGES_URL"
 
-          git add .
+          # -f, and named paths rather than ".": the helm branch carries the
+          # repository's root .gitignore, which ignores *.tgz as build output.
+          # A bare `git add .` drops the package without failing, and the
+          # commit then publishes an index advertising a 404.
+          git add -f "$TGZ" index.yaml
           if git diff --staged --quiet; then
             echo "index and packages unchanged, nothing to publish"
             exit 0
