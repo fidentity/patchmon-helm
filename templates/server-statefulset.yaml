@@ -296,9 +296,7 @@ spec:
           # /health reports PostgreSQL and Redis health too, so this waits for
           # the dependencies and for the schema migrations the first boot runs.
           startupProbe:
-            httpGet:
-              path: /health
-              port: http
+            {{- include "patchmon.server.probeAction" (dict "type" "httpGet") | nindent 12 }}
             initialDelaySeconds: {{ .Values.server.startupProbe.initialDelaySeconds }}
             periodSeconds: {{ .Values.server.startupProbe.periodSeconds }}
             timeoutSeconds: {{ .Values.server.startupProbe.timeoutSeconds }}

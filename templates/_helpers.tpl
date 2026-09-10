@@ -481,6 +481,13 @@ tcpSocket:
 httpGet:
   path: /health
   port: http
+  # The kubelet sends the pod IP as the Host header, and PatchMon's CORS
+  # middleware answers 403 host_mismatch for any Host that is neither
+  # loopback nor derived from CORS_ORIGIN. Upstream's own health check runs
+  # inside the container against localhost, so this only bites on Kubernetes.
+  httpHeaders:
+    - name: Host
+      value: localhost
 {{- else -}}
 {{- fail (printf "probe type must be tcpSocket or httpGet, got %q" .type) -}}
 {{- end -}}

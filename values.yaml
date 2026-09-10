@@ -554,6 +554,12 @@ server:
   # The first boot applies the schema migrations, which is what the startup
   # probe's budget (failureThreshold x periodSeconds, 400s by default) covers.
   # Liveness and readiness do not start until it has succeeded.
+  #
+  # The httpGet probes send `Host: localhost`. PatchMon's CORS middleware
+  # rejects any Host header that is neither loopback nor derived from
+  # CORS_ORIGIN with 403 host_mismatch, and the kubelet sends the pod IP.
+  # Upstream never hits this because its compose health check runs inside the
+  # container against localhost.
   # ---------------------------------------------------------------------------
   startupProbe:
     enabled: true
