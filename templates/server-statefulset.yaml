@@ -1,0 +1,369 @@
+{{- if .Values.server.enabled -}}
+{{- include "patchmon.validateValues" . -}}
+{{- $databaseHost := include "patchmon.database.host" . -}}
+{{- $databasePort := include "patchmon.database.port" . -}}
+{{- $redisHost := include "patchmon.redis.host" . -}}
+{{- $redisPort := include "patchmon.redis.port" . -}}
+{{- $guacdAddress := include "patchmon.guacd.address" . -}}
+{{- $envMap := fromYaml (include "patchmon.server.envMap" .) -}}
+{{- $groupEnvMap := fromYaml (include "patchmon.oidc.groupEnvMap" .) -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "patchmon.server.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "patchmon.server.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  serviceName: {{ include "patchmon.server.name" . }}
+  {{- if not .Values.server.autoscaling.enabled }}
+  replicas: {{ .Values.server.replicaCount }}
+  {{- end }}
+  podManagementPolicy: {{ .Values.server.podManagementPolicy }}
+  {{- with .Values.server.updateStrategy }}
+  updateStrategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "patchmon.server.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "patchmon.server.selectorLabels" . | nindent 8 }}
+        {{- with .Values.server.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- if or .Values.server.podAnnotations .Values.commonAnnotations .Values.rollOnConfigChange }}
+      annotations:
+        {{- if .Values.rollOnConfigChange }}
+        {{- if .Values.configMap.create }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if .Values.secret.create }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- end }}
+        {{- with .Values.commonAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.server.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "patchmon.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.server.terminationGracePeriodSeconds }}
+      {{- if or .Values.server.initContainers.waitForDatabase.enabled .Values.server.initContainers.waitForRedis.enabled .Values.server.initContainers.waitForGuacd.enabled .Values.server.extraInitContainers }}
+      initContainers:
+        {{- if .Values.server.initContainers.waitForDatabase.enabled }}
+        - name: wait-for-database
+          image: {{ include "patchmon.initContainer.image" . }}
+          imagePullPolicy: {{ .Values.initContainerImage.pullPolicy | default "IfNotPresent" }}
+          command:
+            - sh
+            - -c
+            - until nc -z {{ $databaseHost }} {{ $databasePort }}; do echo "waiting for postgresql at {{ $databaseHost }}:{{ $databasePort }}"; sleep 2; done
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
+        {{- end }}
+        {{- if .Values.server.initContainers.waitForRedis.enabled }}
+        - name: wait-for-redis
+          image: {{ include "patchmon.initContainer.image" . }}
+          imagePullPolicy: {{ .Values.initContainerImage.pullPolicy | default "IfNotPresent" }}
+          command:
+            - sh
+            - -c
+            - until nc -z {{ $redisHost }} {{ $redisPort }}; do echo "waiting for redis at {{ $redisHost }}:{{ $redisPort }}"; sleep 2; done
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
+        {{- end }}
+        {{- if and .Values.server.initContainers.waitForGuacd.enabled .Values.guacd.enabled }}
+        - name: wait-for-guacd
+          image: {{ include "patchmon.initContainer.image" . }}
+          imagePullPolicy: {{ .Values.initContainerImage.pullPolicy | default "IfNotPresent" }}
+          command:
+            - sh
+            - -c
+            - until nc -z {{ include "patchmon.guacd.fqdn" . }} {{ .Values.guacd.service.port }}; do echo "waiting for guacd"; sleep 2; done
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
+        {{- end }}
+        {{- with .Values.server.extraInitContainers }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: server
+          image: {{ include "patchmon.server.image" . }}
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          {{- with .Values.server.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            # Stable, unique identity for the agent presence registry. Pods of a
+            # StatefulSet keep their name across restarts, so a server process
+            # recognises the presence records its predecessor left in Redis.
+            - name: POD_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: PORT
+              value: {{ .Values.server.containerPort | quote }}
+            {{- if .Values.configMap.create }}
+            - name: CORS_ORIGIN
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "patchmon.configMapName" . }}
+                  key: CORS_ORIGIN
+            {{- else }}
+            - name: CORS_ORIGIN
+              value: {{ include "patchmon.corsOrigin" . | quote }}
+            {{- end }}
+            # Referenced by DATABASE_URL below as $(POSTGRES_PASSWORD), so the
+            # password stays out of the rendered manifest.
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "patchmon.database.secretName" . }}
+                  key: {{ .Values.database.auth.existingSecretPasswordKey }}
+            - name: DATABASE_URL
+              value: {{ include "patchmon.databaseUrl" . | quote }}
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "patchmon.server.secretName" . }}
+                  key: {{ .Values.server.existingSecretJwtKey }}
+            - name: AI_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "patchmon.server.secretName" . }}
+                  key: {{ .Values.server.existingSecretAiEncryptionKey }}
+            {{- if or .Values.server.sessionSecret .Values.server.existingSecret }}
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "patchmon.server.secretName" . }}
+                  key: {{ .Values.server.existingSecretSessionSecretKey }}
+                  optional: true
+            {{- end }}
+            - name: REDIS_HOST
+              value: {{ $redisHost | quote }}
+            - name: REDIS_PORT
+              value: {{ $redisPort | quote }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "patchmon.redis.secretName" . }}
+                  key: {{ .Values.redis.auth.existingSecretPasswordKey }}
+            {{- if not .Values.redis.enabled }}
+            {{- with .Values.redis.external.username }}
+            - name: REDIS_USER
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.redis.external.tls.enabled }}
+            - name: REDIS_TLS
+              value: "true"
+            - name: REDIS_TLS_VERIFY
+              value: {{ .Values.redis.external.tls.verify | quote }}
+            {{- with .Values.redis.external.tls.caFile }}
+            - name: REDIS_TLS_CA
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- if $guacdAddress }}
+            # Without this the server dials 127.0.0.1:4822 and in-browser RDP
+            # fails: the server image ships no guacd binary.
+            - name: GUACD_ADDRESS
+              value: {{ $guacdAddress | quote }}
+            {{- end }}
+            - name: FRONTEND_URL
+              value: {{ include "patchmon.externalUrl" . | quote }}
+            {{- range $envName, $valueKey := $envMap }}
+            {{- $value := index $.Values.server.env $valueKey }}
+            {{- if and (not (kindIs "invalid" $value)) (ne (toString $value) "") }}
+            - name: {{ $envName }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.server.oidc.enabled }}
+            - name: OIDC_ENABLED
+              value: "true"
+            - name: OIDC_ISSUER_URL
+              value: {{ .Values.server.oidc.issuerUrl | quote }}
+            - name: OIDC_CLIENT_ID
+              value: {{ .Values.server.oidc.clientId | quote }}
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "patchmon.oidc.secretName" . }}
+                  key: {{ .Values.server.oidc.existingSecretClientSecretKey }}
+            - name: OIDC_REDIRECT_URI
+              value: {{ include "patchmon.oidc.redirectUri" . | quote }}
+            - name: OIDC_POST_LOGOUT_URI
+              value: {{ include "patchmon.oidc.postLogoutUri" . | quote }}
+            - name: OIDC_SCOPES
+              value: {{ .Values.server.oidc.scopes | quote }}
+            - name: OIDC_BUTTON_TEXT
+              value: {{ .Values.server.oidc.buttonText | quote }}
+            - name: OIDC_AUTO_CREATE_USERS
+              value: {{ .Values.server.oidc.autoCreateUsers | quote }}
+            - name: OIDC_DEFAULT_ROLE
+              value: {{ .Values.server.oidc.defaultRole | quote }}
+            - name: OIDC_SYNC_ROLES
+              value: {{ .Values.server.oidc.syncRoles | quote }}
+            - name: OIDC_DISABLE_LOCAL_AUTH
+              value: {{ .Values.server.oidc.disableLocalAuth | quote }}
+            - name: OIDC_SESSION_TTL
+              value: {{ .Values.server.oidc.sessionTtl | quote }}
+            - name: OIDC_ENFORCE_HTTPS
+              value: {{ .Values.server.oidc.enforceHttps | quote }}
+            - name: OIDC_TRUST_UNVERIFIED_EMAIL
+              value: {{ .Values.server.oidc.trustUnverifiedEmail | quote }}
+            {{- range $envName, $groupKey := $groupEnvMap }}
+            {{- $group := index $.Values.server.oidc.groups $groupKey }}
+            {{- if $group }}
+            - name: {{ $envName }}
+              value: {{ $group | quote }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.server.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.server.containerPort }}
+              protocol: TCP
+          {{- if .Values.server.startupProbe.enabled }}
+          # /health reports PostgreSQL and Redis health too, so this waits for
+          # the dependencies and for the schema migrations the first boot runs.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: {{ .Values.server.startupProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.server.startupProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.server.startupProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.server.startupProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.server.livenessProbe.enabled }}
+          # Deliberately not /health: that endpoint answers 503 while the
+          # database or Redis is unreachable, so a brief PostgreSQL restart
+          # would fail liveness on every replica at once and restart them all.
+          # Only the process is checked here; readiness handles dependencies.
+          livenessProbe:
+            {{- include "patchmon.server.probeAction" (dict "type" .Values.server.livenessProbe.type) | nindent 12 }}
+            periodSeconds: {{ .Values.server.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.server.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.server.livenessProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.server.readinessProbe.enabled }}
+          # Takes the pod out of the Service while PostgreSQL or Redis is down,
+          # which is what /health is there to report.
+          readinessProbe:
+            {{- include "patchmon.server.probeAction" (dict "type" .Values.server.readinessProbe.type) | nindent 12 }}
+            periodSeconds: {{ .Values.server.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.server.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.server.readinessProbe.failureThreshold }}
+          {{- end }}
+          {{- with .Values.server.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.server.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            # The server writes nothing to disk, but a read-only root
+            # filesystem still needs a writeable /tmp for the Go runtime.
+            - name: tmp
+              mountPath: /tmp
+            {{- with .Values.server.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        {{- with .Values.server.sidecars }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+        {{- with .Values.server.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.server.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

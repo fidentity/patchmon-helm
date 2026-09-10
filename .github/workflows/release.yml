@@ -1,0 +1,151 @@
+# Publishes the chart to the two GitHub-side registries on a version tag.
+#
+# TeamCity publishes the same package to hub.fity.tech from the same npm
+# scripts (see .teamcity/settings.kts and UPDATE.md). All three targets agree
+# that a release is a tag, so a given version means the same bytes everywhere:
+#
+#   oci://hub.fity.tech/fidentity-charts   TeamCity, internal cluster pulls
+#   oci://ghcr.io/<owner>/charts           this workflow, OCI consumers
+#   https://<owner>.github.io/<repo>       this workflow, `helm repo add`
+#
+# The classic repository is served by GitHub Pages from the `helm` branch at
+# its root — that is the repository's actual Pages configuration, so the branch
+# name below is not a free choice.
+name: Release chart
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  # For re-publishing a version whose tag already exists, e.g. after fixing a
+  # registry outage. Packaging is reproducible, so this is safe to re-run.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Chart version to publish, without the leading v'
+        required: true
+
+env:
+  CHART_NAME: patchmon
+
+permissions:
+  contents: write
+  packages: write
+
+# Serialised: both publish steps write to shared state (the OCI registry and
+# the Pages index), and a concurrent index rebuild would drop a chart.
+concurrency:
+  group: chart-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      # On a dispatch, check out the tag for the version being republished
+      # rather than the branch the workflow was started from, so re-running
+      # cannot quietly publish a different tree under an existing version.
+      - uses: actions/checkout@v4
+        with:
+          ref: >-
+            ${{ github.event.inputs.version
+                && format('v{0}', github.event.inputs.version)
+                || github.ref }}
+
+      - name: Resolve the chart version
+        id: version
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          if [ -z "$VERSION" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing chart version $VERSION"
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install the build wrapper
+        working-directory: deployment
+        run: npm ci
+
+      # The same scripts TeamCity drives. prebuild:helm lints and renders every
+      # example first, so a chart that does not render never reaches a
+      # registry. --chart-version overrides Chart.yaml's version; appVersion is
+      # left alone, because the chart and PatchMon move independently.
+      - name: Lint and package
+        working-directory: deployment
+        run: npm run build:helm -- --chart-version=${{ steps.version.outputs.version }}
+
+      - name: Publish to GHCR
+        working-directory: deployment
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io \
+            --username "${{ github.actor }}" --password-stdin
+          CHART_REGISTRY="oci://ghcr.io/${OWNER}/charts" \
+            npm run publish "${CHART_NAME}-${{ steps.version.outputs.version }}.tgz"
+
+      - name: Publish to the Pages Helm repository
+        env:
+          TGZ: ${{ env.CHART_NAME }}-${{ steps.version.outputs.version }}.tgz
+          # The branch GitHub Pages is configured to serve, at its root.
+          PAGES_BRANCH: helm
+        run: |
+          set -eu
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          REPO_URL="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          PAGES_URL="https://${OWNER}.github.io/${{ github.event.repository.name }}"
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Checked out into .pages rather than a directory named after the
+          # branch, so nothing in the step reads as the helm binary.
+          if git ls-remote --exit-code --heads "$REPO_URL" "$PAGES_BRANCH" >/dev/null 2>&1; then
+            git clone --branch "$PAGES_BRANCH" --single-branch --depth 1 "$REPO_URL" .pages
+          else
+            echo "branch $PAGES_BRANCH does not exist yet, creating it"
+            mkdir .pages
+            cd .pages
+            git init -b "$PAGES_BRANCH"
+            git remote add origin "$REPO_URL"
+            cd ..
+          fi
+
+          cp "deployment/dist/${TGZ}" .pages/
+
+          cd .pages
+          # Rebuilt from the packages actually present rather than merged into
+          # the old index, so a hand-edited or half-written index cannot
+          # survive and reference a chart that is no longer there. Only *.tgz
+          # is indexed, so other files on the branch are left alone.
+          helm repo index . --url "$PAGES_URL"
+
+          git add .
+          if git diff --staged --quiet; then
+            echo "index and packages unchanged, nothing to publish"
+            exit 0
+          fi
+          git commit -m "Publish ${CHART_NAME} ${{ steps.version.outputs.version }}"
+          git push origin "$PAGES_BRANCH"
+
+      - name: Create the GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: deployment/dist/*.tgz
+          generate_release_notes: true
+
+      - name: Installation instructions
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          V="${{ steps.version.outputs.version }}"
+          echo "helm install patchmon oci://ghcr.io/${OWNER}/charts/${CHART_NAME} --version ${V}"
+          echo "helm repo add patchmon https://${OWNER}.github.io/${{ github.event.repository.name }}"
+          echo "helm install patchmon patchmon/${CHART_NAME} --version ${V}"

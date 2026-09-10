@@ -1,0 +1,43 @@
+# Patterns to ignore when packaging the chart.
+# Shell glob matching, relative path matching, and negation (prefix !).
+# One pattern per line.
+.DS_Store
+
+# VCS
+.git/
+.gitignore
+.gitattributes
+
+# Editors and local tooling
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+.project
+.idea/
+*.tmproj
+.vscode/
+.claude/
+
+# CI and the build wrapper. deployment/ holds the npm scripts both CI systems
+# drive, including a .npmrc that fityHelmBuildStep writes with a registry
+# token, and the dist/ the packaged chart lands in — none of which belong
+# inside the package.
+.github/
+.teamcity/
+deployment/
+.gitlab-ci.yml
+.travis.yml
+
+# Documentation and examples, published in the repository rather than shipped
+# in the package.
+docs/
+examples/
+
+# Packaged charts
+*.tgz
+
+# Tests
+test/
+*.test.yaml

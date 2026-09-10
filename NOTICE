@@ -1,0 +1,18 @@
+PatchMon Helm chart
+===================
+
+This chart is a derivative work of the community PatchMon Helm chart
+originally published at https://github.com/RuTHlessBEat200/PatchMon-helm
+(archived), which is licensed under the GNU General Public License v3.0.
+This chart is therefore distributed under the same license; see LICENSE.
+
+Lineage:
+
+  RuTHlessBEat200/PatchMon-helm  (original, archived 2026-05)
+    -> bacht-fidi/PatchMon-helm  (fork for PatchMon 1.4.2: external-database
+                                  support, OIDC redirect URI and scopes,
+                                  gh-pages chart release workflow)
+      -> fidentity/patchmon-helm (this repository: rewritten for PatchMon 2.x)
+
+PatchMon itself (https://github.com/PatchMon/PatchMon) is a separate work with
+its own license and is not distributed as part of this chart.
