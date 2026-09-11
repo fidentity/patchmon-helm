@@ -1,6 +1,6 @@
 ---
 name: patchmon-chart
-description: Maintain, verify or release the PatchMon Helm chart in this repository — tracking a new upstream PatchMon version, adding or changing values, debugging what the chart renders, or publishing it. Also covers how the chart is consumed by infrastructure-apps/apps/patchmon. Use whenever work touches Chart.yaml, values.yaml, templates/, deployment/, the CI that publishes the chart, or the values that deployment repo passes in.
+description: Maintain, verify or release the PatchMon Helm chart in this repository — tracking a new upstream PatchMon version, adding or changing values, debugging what the chart renders, or publishing it. Use whenever work touches Chart.yaml, values.yaml, templates/, deployment/ or the CI that publishes the chart.
 ---
 
 # Maintaining the PatchMon Helm chart
@@ -21,25 +21,22 @@ a change to a public API, not an internal detail.
 | `UPDATE.md` | the release procedure, version scheme and publishing matrix |
 | `docs/upgrading-1x-to-2x.md` | what changed from the 1.4.x chart, and the migration traps |
 | `NOTICE` | provenance — this is a GPL-3.0 derivative of an archived community chart |
-| `~/fidentity/infrastructure-apps/apps/patchmon` | the only consumer — what actually gets deployed, and with which values |
 
 ## Repository shape
 
 ```
 Chart.yaml  values.yaml  templates/     the chart, plain Helm
 deployment/                             npm build wrapper — NOT cdk8s
-.teamcity/                              TeamCity Kotlin DSL
 examples/                               three worked values files
 ```
 
-**`deployment/` is not cdk8s.** The sibling fidentity service repos synthesize
-their charts from TypeScript in `deployment/`; this one does not. The directory
-exists only because the shared TeamCity step `fityHelmBuildStep` has its working
-directory fixed at `./deployment` and drives npm. It holds a `package.json`
-with three scripts, its lockfile, and `chart-lint.sh` — nothing more. Do not
-convert this chart to cdk8s: a synthesized chart flattens
-the conditionals that make the external-database, OIDC and guacd paths
-configurable, and `values.yaml` is the point of the chart.
+**`deployment/` is not cdk8s and holds no chart source.** It exists so that
+lint, package and push are defined once, for CI and for a local run alike: a
+`package.json` with three scripts, its lockfile, and `chart-lint.sh` — nothing
+more. Do not convert this chart to cdk8s or any other synthesizer: a
+synthesized chart flattens the conditionals that make the external-database,
+OIDC and guacd paths configurable, and `values.yaml` is the point of the
+chart.
 
 ## The one invariant that matters most
 
@@ -90,58 +87,25 @@ needs.
 
 5. Verify (see below), then commit on a feature branch and open a PR.
 
-## The consumer: infrastructure-apps
+## Consumers
 
-The chart is deployed by **`~/fidentity/infrastructure-apps/apps/patchmon`**,
-which is cdk8s TypeScript synthesizing an ArgoCD Application. Read it before
-changing anything in `values.yaml`: it is the only known consumer, so a values
-rename is a breaking change to that repo specifically.
+`values.yaml` is the chart's public interface. Renaming or removing a key is a
+breaking change for anyone deploying it, so it belongs in a MAJOR chart bump
+with the migration written down — `docs/upgrading-1x-to-2x.md` is the worked
+example of doing that once already.
 
-| File | Holds |
-|---|---|
-| `main.ts` | the live instance — domain, chart version, secret names, external database |
-| `components/helm.ts` | the `Helm` construct and the whole values block |
-| `components/secrets.ts` | ExternalSecret pulling from the `k8s-services-infra` vault |
-| `components/ingress-components.ts` | Traefik middlewares, IP allowlist |
-| `components/compliance-prune-cronjob.ts` | raw-SQL prune of `compliance_scans` / `compliance_results` |
-| `types/patchmon.ts` | the props interface mirroring the values it sets |
-
-Live shape as of chart 2.0.1:
-
-- `sentinel.infra.fity.tech`, ArgoCD project `fity-apps`, namespace
-  `fity-apps-patchmon-main`, `fullnameOverride: patchmon-main`
-- **external PostgreSQL on Aiven**, `database.external.sslMode: require` —
-  this is why the 1.4.2 fork grew external-database support in the first place
-- **bundled Redis**, storage class `fity-nfs`, `persistence.size` pinned to
-  `5Gi`. That is what the live PVC was created with and a
-  `volumeClaimTemplate` is immutable, so any other value fails the upgrade
-  outright — do not "tidy" it to a smaller number
-- **guacd enabled**, for in-browser RDP to Windows hosts
-- `secret.create: false` — every credential comes from the ExternalSecret
-- images from the `hub.fity.tech/k8s-cache-*` mirrors, set per component
-  through `image.registry` rather than `global.imageRegistry`
-- Traefik, not ingress-nginx, so the chart's default nginx timeout annotations
-  do not apply — the middlewares carry that
-- OIDC against Zitadel with `disableLocalAuth: true` and `patchmon_*` groups
-- secret keys use **underscores** (`jwt_secret`, `ai_encryption_key`,
-  `postgres_password`, `redis_password`, `oidc_client_secret`), overridden via
-  the `existingSecret*Key` values
-
-The compliance prune CronJob lives there rather than in the chart on purpose:
-it is an operational workaround for unbounded compliance-table growth, and it
-runs `DELETE` against the production database. Never run it by hand.
-
-The move from the 1.4.x values shape landed in infrastructure-apps#26 (chart
-2.0.0) and #27 (2.0.1); `docs/upgrading-1x-to-2x.md` records what that
-migration involved. That repository is a separate change in a separate
-repository — do not edit it from here without being asked.
+Two things that bite an existing release in particular, both covered under
+Traps below: `fullnameOverride` renames volumes, and
+`database.persistence.size` / `redis.persistence.size` are immutable once a
+release exists, so they must keep whatever value the live PVCs were created
+with.
 
 ## Verification
 
 From the repository root:
 
 ```bash
-(cd deployment && npm ci && npm run lint)        # what both CI systems run
+(cd deployment && npm ci && npm run lint)        # what CI runs
 python3 .claude/skills/patchmon-chart/scripts/check-values-refs.py
 .claude/skills/patchmon-chart/scripts/check-env-drift.sh
 ```
@@ -160,8 +124,8 @@ helm template patchmon . -f examples/values-external-services.yaml \
   | kubeconform -strict -summary -kubernetes-version 1.30.0 -
 ```
 
-`kubeconform` runs in `lint.yml` but not in TeamCity, which has no such binary
-in its helm image.
+`kubeconform` runs in `lint.yml` only. It is deliberately not part of
+`npm run lint`, so packaging never depends on the binary being present.
 
 ## Traps
 
@@ -186,10 +150,11 @@ startup probe also goes through; do not inline an `httpGet` block that skips
 it. Kubernetes' own `httpGet.host` field is the wrong fix — it points the
 kubelet at the node's loopback, not the pod's.
 
-**`.helmignore` leaks.** `deployment/`, `.teamcity/`, `.github/` and `.claude/`
-are excluded for a reason — `fityHelmBuildStep` writes an `.npmrc` carrying a
-registry token into `deployment/`. This file has been broken twice by rewriting
-it rather than editing it. After any change:
+**`.helmignore` leaks.** `deployment/`, `.github/` and `.claude/` are excluded
+for a reason: CI wiring, local tooling and anything that may hold credentials
+(an `.npmrc` in `deployment/`, for instance) have no business inside a package
+handed to operators. This file has been broken twice by rewriting it rather
+than editing it. After any change:
 
 ```bash
 cd deployment && npm run build:helm -- --chart-version=0.0.0-dev
@@ -210,18 +175,19 @@ in-place `helm upgrade` from it works. `podManagementPolicy` defaults to
 `OrderedReady` because that is what the archived chart produced — setting
 `Parallel` is rejected by the API server on an existing StatefulSet.
 
-**`CHART_REGISTRY`'s default is load-bearing.** `fityHelmBuildStep` is fixed and
-cannot pass environment, so unset must mean `hub.fity.tech`. Changing that
-default in `deployment/package.json` silently redirects the TeamCity publish.
+**`publish` has no default registry.** `CHART_REGISTRY` must be set or the
+script fails, on purpose — a default would make a mistyped or missing
+environment push the chart somewhere nobody intended. `release.yml` sets it to
+GHCR.
 
 **Chart version and `appVersion` are independent.** `appVersion` tracks
 PatchMon; the chart version says what an upgrade costs the operator. Do not
 align them — `UPDATE.md` records why, and the archived chart's own release
 history shows the alignment failing in practice.
 
-**`helm package --version` validates SemVer.** A `release_x.y` branch resolves
-`image.tag` to `release-x.y`, which is not valid SemVer and fails the second
-TeamCity publish. Release from tags.
+**`helm package --version` validates SemVer.** Anything that is not a valid
+SemVer string fails packaging outright. Release from tags, whose names are
+`v<semver>`.
 
 **Never generate secrets in the chart.** A value that changed on each
 `helm upgrade` would invalidate every session and make every encrypted column
@@ -236,10 +202,9 @@ unreadable. The chart fails to render without them, on purpose, and
 git tag v2.0.1 && git push origin v2.0.1
 ```
 
-That publishes to `ghcr.io/fidentity/charts` and the `helm` branch (GitHub
-Actions, `release.yml`) and to `hub.fity.tech/fidentity-charts` (TeamCity).
-GitHub Pages serves the `helm` branch at its root — that branch name is the
-repository's actual Pages configuration, not a free choice.
+That publishes to `ghcr.io/<owner>/charts` and to the `helm` branch
+(`release.yml`). GitHub Pages serves the `helm` branch at its root — that
+branch name is the repository's actual Pages configuration, not a free choice.
 
 Never tag from a feature branch: a chart version in an OCI registry is
 effectively permanent.
@@ -249,7 +214,6 @@ effectively permanent.
 - Feature branch always, never commit to `main` (org policy).
 - `origin` is SSH. Over HTTPS, pushing anything under `.github/workflows/`
   fails — the `gh` OAuth token has no `workflow` scope.
-- The Kotlin DSL in `.teamcity/` cannot be compiled locally: maven and the
-  private `teamcity-lib` artifact are not available. Validate it by comparing
-  against a sibling repo (`~/fidentity/infra-auth-service/.teamcity/`) and let
-  the first TeamCity run be the real test.
+- This repository is public. Nothing here should name internal hosts,
+  registries, clusters, vaults or deployment repositories; keep examples
+  generic (`example.com`, `<owner>`, `<namespace>`).

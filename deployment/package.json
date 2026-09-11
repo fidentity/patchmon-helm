@@ -3,12 +3,12 @@
   "version": "0.0.0-dev",
   "private": true,
   "license": "GPL-3.0",
-  "description": "Build and publish wrapper for the PatchMon Helm chart. The chart itself lives in the repository root; this directory exists because fityHelmBuildStep runs in ./deployment and drives npm. Both TeamCity and GitHub Actions call these scripts, so the lint, package and push logic is defined once.",
+  "description": "Build and publish wrapper for the PatchMon Helm chart. The chart itself lives in the repository root; this directory holds only the npm scripts the GitHub workflows drive, so the lint, package and push logic is defined once.",
   "scripts": {
     "lint": "sh ./chart-lint.sh",
     "clean": "rm -rf dist",
     "prebuild:helm": "npm run lint",
     "build:helm": "sh -c 'helm package .. --version \"${0#--chart-version=}\" --destination dist'",
-    "publish": "sh -c 'helm push dist/$0 \"${CHART_REGISTRY:-oci://hub.fity.tech/fidentity-charts}\"'"
+    "publish": "sh -c 'helm push dist/$0 \"${CHART_REGISTRY:?set CHART_REGISTRY, e.g. oci://ghcr.io/<owner>/charts}\"'"
   }
 }

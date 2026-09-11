@@ -20,12 +20,10 @@
 .vscode/
 .claude/
 
-# CI and the build wrapper. deployment/ holds the npm scripts both CI systems
-# drive, including a .npmrc that fityHelmBuildStep writes with a registry
-# token, and the dist/ the packaged chart lands in — none of which belong
-# inside the package.
+# CI and the build wrapper. deployment/ holds the npm scripts the workflows
+# drive, any local .npmrc, and the dist/ the packaged chart lands in — none of
+# which belong inside the package.
 .github/
-.teamcity/
 deployment/
 .gitlab-ci.yml
 .travis.yml
