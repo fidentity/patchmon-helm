@@ -1,10 +1,8 @@
 # Lints and renders the chart on every branch and pull request.
 #
-# TeamCity also lints, as the helm build's prebuild:helm step, and reports back
-# through GitHub Checks. This workflow is deliberately the same `npm run lint`
-# rather than a second definition of the checks, so the two cannot drift; it
-# earns its keep by covering forks and by working before the TeamCity project
-# exists.
+# Deliberately the same `npm run lint` the release workflow runs through
+# prebuild:helm, rather than a second definition of the checks, so the two
+# cannot drift.
 name: Lint and template
 
 on:
@@ -38,9 +36,9 @@ jobs:
         run: npm run lint
 
       # Catches what `helm lint` does not: fields that are not in the
-      # Kubernetes API at all, and wrong types on the ones that are. Not part
-      # of `npm run lint`, because kubeconform is not in the TeamCity helm
-      # build image.
+      # Kubernetes API at all, and wrong types on the ones that are. Kept out
+      # of `npm run lint` so that packaging does not depend on a kubeconform
+      # binary being present.
       - name: Validate against Kubernetes schemas
         run: |
           curl -sSL -o /tmp/kubeconform.tar.gz \

@@ -1,9 +1,19 @@
 # PatchMon Helm chart
 
+> **Disclaimer — this is not an official PatchMon project.** It is an
+> independent, community-maintained Helm chart, not affiliated with, endorsed
+> by or supported by the PatchMon project or its maintainers. It packages
+> upstream's images; it is not built by them. Open chart issues here, and
+> application issues at
+> [PatchMon/PatchMon](https://github.com/PatchMon/PatchMon).
+>
+> Derived from an archived community chart and distributed under GPL-3.0 — see
+> [Provenance and licence](#provenance-and-licence).
+
 A Helm chart for [PatchMon](https://github.com/PatchMon/PatchMon) 2.x — Linux
 and Windows patch monitoring, compliance scanning and patch automation.
 
-Chart `2.0.0` · PatchMon `v2.1.3` · Kubernetes 1.23+ · Helm 3.8+
+Chart `2.0.1` · PatchMon `v2.1.3` · Kubernetes 1.23+ · Helm 3.8+
 
 > **Coming from a 1.4.x chart?** Read
 > [docs/upgrading-1x-to-2x.md](docs/upgrading-1x-to-2x.md) first. PatchMon 2.0
@@ -27,31 +37,27 @@ what the agent presence registry keys on.
 
 ## Install
 
-The chart is published to three places, all carrying the same version built
+The chart is published to two places, both carrying the same version built
 from the same tag:
 
 ```bash
-# internal, from TeamCity — needs a registry login
-helm registry login hub.fity.tech
-helm install patchmon oci://hub.fity.tech/fidentity-charts/patchmon --version 2.0.0
-
-# GHCR, from GitHub Actions
-helm install patchmon oci://ghcr.io/fidentity/charts/patchmon --version 2.0.0
+# GHCR, as an OCI chart
+helm install patchmon oci://ghcr.io/fidentity/charts/patchmon --version 2.0.1
 
 # classic repository, for tooling without OCI support
 helm repo add patchmon https://fidentity.github.io/patchmon-helm
-helm install patchmon patchmon/patchmon --version 2.0.0
+helm install patchmon patchmon/patchmon --version 2.0.1
 ```
 
-The examples below use the internal registry; swap the reference for whichever
-you pull from.
+The examples below use the OCI reference; swap it for `patchmon/patchmon` if
+you added the classic repository.
 
 The chart generates no secrets — a value that changed on every `helm upgrade`
 would invalidate every session and make every encrypted column unreadable — so
 four of them have to be supplied.
 
 ```bash
-helm install patchmon oci://hub.fity.tech/fidentity-charts/patchmon \
+helm install patchmon oci://ghcr.io/fidentity/charts/patchmon \
   --namespace patchmon --create-namespace \
   --set server.env.serverHost=patchmon.example.com \
   --set server.env.serverProtocol=https \
@@ -73,7 +79,7 @@ kubectl create secret generic patchmon-secrets -n patchmon \
   --from-literal=ai-encryption-key="$(openssl rand -hex 64)" \
   --from-literal=session-secret="$(openssl rand -hex 64)"
 
-helm install patchmon oci://hub.fity.tech/fidentity-charts/patchmon \
+helm install patchmon oci://ghcr.io/fidentity/charts/patchmon \
   -n patchmon -f examples/values-prod.yaml
 ```
 
@@ -319,7 +325,7 @@ schema migrations get before Kubernetes gives up.
 ### Upgrading
 
 ```bash
-helm upgrade patchmon oci://hub.fity.tech/fidentity-charts/patchmon \
+helm upgrade patchmon oci://ghcr.io/fidentity/charts/patchmon \
   -n patchmon -f my-values.yaml --wait --timeout 15m
 ```
 
@@ -386,19 +392,21 @@ helm test pm -n pm-test
 ```
 
 The chart lives at the repository root as ordinary Helm templates.
-`deployment/` holds only the npm scripts that both TeamCity and GitHub Actions
-drive, so lint, package and push are defined once; it is excluded from the
-package.
+`deployment/` holds only the npm scripts the GitHub workflows drive, so lint,
+package and push are defined once; it is excluded from the package.
 
 [UPDATE.md](UPDATE.md) covers tracking a new PatchMon release, the chart
-version scheme, and how the two CI systems publish to the three registries.
+version scheme, and how a tag is published to both registries.
 
 ## Provenance and licence
+
+This is not an official PatchMon project — see the disclaimer at the top.
 
 Derived from the community chart at
 [RuTHlessBEat200/PatchMon-helm](https://github.com/RuTHlessBEat200/PatchMon-helm)
 (archived) by way of a fork for PatchMon 1.4.2, and rewritten for 2.x. Licensed
 GPL-3.0, as that chart is; see [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
-PatchMon itself is a separate project: <https://github.com/PatchMon/PatchMon>.
-Application docs: <https://docs.patchmon.net>.
+PatchMon itself is a separate work with its own licence:
+<https://github.com/PatchMon/PatchMon>. Application docs:
+<https://docs.patchmon.net>.

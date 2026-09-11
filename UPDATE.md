@@ -63,54 +63,38 @@ probe fix; `2.0.0 -> 3.0.0` for PostgreSQL 18 -> 19.
 
 ## Releasing
 
-A release is a **git tag**. Three registries are published from one definition,
-by two drivers:
+A release is a **git tag**. Two registries are published from one definition:
 
-| Target | Driven by | For |
-|---|---|---|
-| `oci://hub.fity.tech/fidentity-charts` | TeamCity | internal cluster pulls |
-| `oci://ghcr.io/fidentity/charts` | GitHub Actions | OCI consumers outside the cluster |
-| `https://fidentity.github.io/patchmon-helm` | GitHub Actions | `helm repo add`, for tools without OCI support |
+| Target | For |
+|---|---|
+| `oci://ghcr.io/fidentity/charts` | OCI consumers |
+| `https://fidentity.github.io/patchmon-helm` | `helm repo add`, for tools without OCI support |
 
 ```bash
 git tag v2.0.1 && git push origin v2.0.1
 ```
 
-TeamCity additionally publishes development versions on every branch; GitHub
-Actions only publishes tags. See the version table below.
+Only tags are published; branch builds lint but do not publish.
 
-### One definition, two drivers
+### One definition
 
-The lint, package and push logic lives in `deployment/package.json`. Both
-TeamCity's `fityHelmBuildStep` and the GitHub workflows call the same scripts,
-so the two cannot drift:
+The lint, package and push logic lives in `deployment/package.json`, so the
+workflows and a local run cannot drift:
 
 | npm script | What it does |
 |---|---|
 | `lint` | `helm lint` and renders every example (`deployment/chart-lint.sh`) |
 | `prebuild:helm` | runs `lint`, so a chart that does not render never reaches a registry |
 | `build:helm` | `helm package .. --version <chart-version> --destination dist` |
-| `publish` | `helm push dist/<tgz> "${CHART_REGISTRY:-oci://hub.fity.tech/fidentity-charts}"` |
+| `publish` | `helm push dist/<tgz> "$CHART_REGISTRY"` |
 
-Only the registry differs, through `CHART_REGISTRY`. Unset — which is how
-TeamCity invokes it, since `fityHelmBuildStep` is fixed and cannot pass
-environment — it defaults to `hub.fity.tech`. The GitHub workflow sets it to
-GHCR. **Keep that default:** changing it silently redirects the TeamCity
-publish.
+`publish` has no default registry on purpose: `CHART_REGISTRY` must be set, or
+the script fails rather than guessing where to push. `release.yml` sets it to
+GHCR.
 
 The chart itself stays at the repository root as ordinary Helm templates;
-`deployment/` exists only because the shared TeamCity step's working directory
-is fixed at `./deployment`. Both `deployment/` and `.teamcity/` are in
-`.helmignore`, so neither ends up inside the package — which matters, because
-`fityHelmBuildStep` writes an `.npmrc` carrying a registry token there.
-
-### TeamCity
-
-`.teamcity/settings.kts` composes the shared Kotlin DSL from
-`fidentity/infrastructure` (`teamcity/teamcity-lib`), the same as the other
-service repositories. There is no image build here — this repository ships only
-the chart — so the `release` job depends on the `helm build` job alone, where a
-service repository would also list its `docker build`.
+`deployment/` holds only the npm scripts, its lockfile and `chart-lint.sh`. It
+is in `.helmignore`, so it never ends up inside the package.
 
 ### GitHub Actions
 
@@ -119,12 +103,8 @@ service repository would also list its `docker build`.
 | `lint.yml` | push to `main`, pull requests | `npm run lint`, plus `kubeconform` schema validation |
 | `release.yml` | tag `v*.*.*`, or manual dispatch | packages, pushes to GHCR, rebuilds the Pages index, creates a GitHub release |
 
-`lint.yml` overlaps with TeamCity, which lints in `prebuild:helm` and reports
-through GitHub Checks. It is the same `npm run lint` rather than a second set of
-checks, and it covers forks and the period before the TeamCity project exists.
-
-`kubeconform` runs only here, because it is not in the TeamCity helm build
-image.
+`kubeconform` runs only in `lint.yml`, so that packaging does not depend on a
+kubeconform binary being present.
 
 A manual dispatch takes a version and checks out `v<version>`, not the branch
 it was started from, so re-publishing after a registry failure cannot put a
@@ -138,33 +118,20 @@ free choice. The workflow copies the new package onto that branch and rebuilds
 ### Versions
 
 The chart version comes from the build, not from `Chart.yaml`:
-`helm package --version` overrides it. `appVersion` is *not* overridden and
-stays hand-maintained in `Chart.yaml`, because the chart and PatchMon move
-independently.
+`helm package --version` overrides it, using the tag with the leading `v`
+stripped. `appVersion` is *not* overridden and stays hand-maintained in
+`Chart.yaml`, because the chart and PatchMon move independently.
 
-TeamCity gets its version from `fityGoRetagStep` and publishes twice, under an
-immutable and a moving version:
+So on `v2.0.1` both registries carry `2.0.1` built from the same tree. Keep
+`Chart.yaml`'s `version` in step with the tag you intend to push anyway — it is
+what anyone reading the repository sees.
 
-| Branch or tag | `image.version` (immutable) | `image.tag` (moving) |
-|---|---|---|
-| `main` | `0.0.<build>-dev` | `0.0.0-dev` |
-| feature branch / PR | `0.0.<build>-dev-<branch>` | `0.0.0-dev-<branch>` |
-| tag `v2.0.1` | `2.0.1` | `2.0.1` |
-
-GitHub Actions uses the tag alone, so on `v2.0.1` all three registries carry
-`2.0.1` built from the same tree.
-
-One caveat inherited from the shared TeamCity step: `helm package --version`
-validates SemVer. A `release_x.y` branch resolves `image.tag` to `release-x.y`,
-which is not valid SemVer and fails the second publish. Release from tags.
+`helm package --version` validates SemVer, so the version passed in has to be
+a valid SemVer string. Release from tags.
 
 ### Installing a published chart
 
 ```bash
-# internal
-helm registry login hub.fity.tech
-helm install patchmon oci://hub.fity.tech/fidentity-charts/patchmon --version 2.0.1
-
 # GHCR
 helm install patchmon oci://ghcr.io/fidentity/charts/patchmon --version 2.0.1
 
@@ -178,7 +145,7 @@ helm install patchmon patchmon/patchmon --version 2.0.1
 ```bash
 cd deployment
 npm ci
-npm run lint                                   # what both CI systems run
+npm run lint                                   # what CI runs
 npm run build:helm -- --chart-version=0.0.0-dev
 ```
 

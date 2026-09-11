@@ -1,12 +1,8 @@
-# Publishes the chart to the two GitHub-side registries on a version tag.
+# Publishes the chart to both registries on a version tag (see UPDATE.md).
+# A release is a tag, so a given version means the same bytes in both places:
 #
-# TeamCity publishes the same package to hub.fity.tech from the same npm
-# scripts (see .teamcity/settings.kts and UPDATE.md). All three targets agree
-# that a release is a tag, so a given version means the same bytes everywhere:
-#
-#   oci://hub.fity.tech/fidentity-charts   TeamCity, internal cluster pulls
-#   oci://ghcr.io/<owner>/charts           this workflow, OCI consumers
-#   https://<owner>.github.io/<repo>       this workflow, `helm repo add`
+#   oci://ghcr.io/<owner>/charts           OCI consumers
+#   https://<owner>.github.io/<repo>       `helm repo add`
 #
 # The classic repository is served by GitHub Pages from the `helm` branch at
 # its root — that is the repository's actual Pages configuration, so the branch
@@ -74,10 +70,10 @@ jobs:
         working-directory: deployment
         run: npm ci
 
-      # The same scripts TeamCity drives. prebuild:helm lints and renders every
-      # example first, so a chart that does not render never reaches a
-      # registry. --chart-version overrides Chart.yaml's version; appVersion is
-      # left alone, because the chart and PatchMon move independently.
+      # prebuild:helm lints and renders every example first, so a chart that
+      # does not render never reaches a registry. --chart-version overrides
+      # Chart.yaml's version; appVersion is left alone, because the chart and
+      # PatchMon move independently.
       - name: Lint and package
         working-directory: deployment
         run: npm run build:helm -- --chart-version=${{ steps.version.outputs.version }}
