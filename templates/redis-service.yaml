@@ -1,0 +1,28 @@
+{{- if .Values.redis.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "patchmon.redis.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "patchmon.redis.labels" . | nindent 4 }}
+  {{- if or .Values.redis.service.annotations .Values.commonAnnotations }}
+  annotations:
+    {{- with .Values.commonAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.redis.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+spec:
+  type: {{ .Values.redis.service.type }}
+  clusterIP: None
+  ports:
+    - name: redis
+      port: {{ .Values.redis.service.port }}
+      targetPort: redis
+      protocol: TCP
+  selector:
+    {{- include "patchmon.redis.selectorLabels" . | nindent 4 }}
+{{- end }}

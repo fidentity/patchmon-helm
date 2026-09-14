@@ -1,0 +1,21 @@
+# Local, per-developer Claude Code settings
+.claude/settings.local.json
+
+# Local override files — never commit real secrets
+values-dev.yaml
+values-local.yaml
+secrets-dev.yaml
+*.dec.yaml
+
+# Helm build output
+*.tgz
+dist/
+charts/
+
+# npm
+node_modules/
+
+# Pages branch checkout, made by the release workflow
+.pages/
+
+.DS_Store

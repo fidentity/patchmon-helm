@@ -1,0 +1,32 @@
+apiVersion: v2
+name: patchmon
+description: A Helm chart for PatchMon 2.x - Linux & Windows patch monitoring and management
+type: application
+
+# Chart version. Bump on every change to this chart; see UPDATE.md for the scheme.
+version: 2.0.1
+# Version of the PatchMon server image this chart is developed and tested against.
+appVersion: "v2.1.3"
+
+kubeVersion: ">=1.23.0-0"
+
+keywords:
+  - patchmon
+  - monitoring
+  - patch-management
+  - compliance
+  - security
+home: https://patchmon.net
+sources:
+  - https://github.com/PatchMon/PatchMon
+  - https://github.com/PatchMon/PatchMon/pkgs/container/patchmon-server
+maintainers:
+  - name: fidentity
+    url: https://github.com/fidentity/patchmon-helm
+icon: https://raw.githubusercontent.com/PatchMon/PatchMon/main/docs/assets/logo.png
+annotations:
+  artifacthub.io/license: GPL-3.0
+  artifacthub.io/containsSecurityUpdates: "false"
+  artifacthub.io/changes: |
+    - kind: fixed
+      description: Send a loopback Host header on the httpGet probes, which PatchMon's CORS middleware otherwise rejects with 403

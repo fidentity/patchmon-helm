@@ -1,0 +1,38 @@
+{{- if .Values.server.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "patchmon.server.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "patchmon.server.labels" . | nindent 4 }}
+  {{- if or .Values.server.service.annotations .Values.commonAnnotations }}
+  annotations:
+    {{- with .Values.commonAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.server.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+spec:
+  type: {{ .Values.server.service.type }}
+  sessionAffinity: {{ .Values.server.service.sessionAffinity }}
+  {{- with .Values.server.service.loadBalancerIP }}
+  loadBalancerIP: {{ . }}
+  {{- end }}
+  {{- with .Values.server.service.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  ports:
+    - name: http
+      port: {{ .Values.server.service.port }}
+      targetPort: http
+      protocol: TCP
+      {{- if and (eq .Values.server.service.type "NodePort") .Values.server.service.nodePort }}
+      nodePort: {{ .Values.server.service.nodePort }}
+      {{- end }}
+  selector:
+    {{- include "patchmon.server.selectorLabels" . | nindent 4 }}
+{{- end }}

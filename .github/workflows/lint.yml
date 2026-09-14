@@ -1,0 +1,59 @@
+# Lints and renders the chart on every branch and pull request.
+#
+# Deliberately the same `npm run lint` the release workflow runs through
+# prebuild:helm, rather than a second definition of the checks, so the two
+# cannot drift.
+name: Lint and template
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/setup-helm@v5
+        with:
+          version: v3.16.3
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Install the build wrapper
+        working-directory: deployment
+        run: npm ci
+
+      - name: helm lint and render every example
+        working-directory: deployment
+        run: npm run lint
+
+      # Catches what `helm lint` does not: fields that are not in the
+      # Kubernetes API at all, and wrong types on the ones that are. Kept out
+      # of `npm run lint` so that packaging does not depend on a kubeconform
+      # binary being present.
+      - name: Validate against Kubernetes schemas
+        run: |
+          curl -sSL -o /tmp/kubeconform.tar.gz \
+            https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+          tar -xzf /tmp/kubeconform.tar.gz -C /tmp kubeconform
+
+          LINT_SECRETS="--set server.jwtSecret=lint --set server.aiEncryptionKey=lint \
+            --set database.auth.password=lint --set redis.auth.password=lint"
+
+          mkdir -p /tmp/rendered
+          # shellcheck disable=SC2086
+          helm template patchmon . $LINT_SECRETS --set ingress.enabled=true \
+            > /tmp/rendered/default.yaml
+          for f in examples/*.yaml; do
+            helm template patchmon . -f "$f" > "/tmp/rendered/$(basename "$f")"
+          done
+
+          /tmp/kubeconform -strict -summary -kubernetes-version 1.30.0 /tmp/rendered/*.yaml

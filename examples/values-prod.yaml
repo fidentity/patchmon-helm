@@ -1,0 +1,110 @@
+# Production values: bundled PostgreSQL and Redis on a ReadWriteOnce
+# StorageClass, every credential from a Secret this chart does not manage, TLS
+# from cert-manager.
+#
+# Create the Secret first — with SOPS, Sealed Secrets or External Secrets in
+# anything resembling a real setup:
+#
+#   kubectl create secret generic patchmon-secrets -n patchmon \
+#     --from-literal=postgres-password="$(openssl rand -hex 32)" \
+#     --from-literal=redis-password="$(openssl rand -hex 32)" \
+#     --from-literal=jwt-secret="$(openssl rand -hex 64)" \
+#     --from-literal=ai-encryption-key="$(openssl rand -hex 64)" \
+#     --from-literal=session-secret="$(openssl rand -hex 64)"
+#
+# Keep ai-encryption-key safe and unchanged: it decrypts the AI provider
+# credentials, agent bootstrap tokens and notification secrets already in the
+# database.
+
+fullnameOverride: "patchmon-prod"
+
+global:
+  # A ReadWriteOnce StorageClass. Remove to use the cluster's default.
+  storageClass: ""
+
+server:
+  env:
+    serverProtocol: https
+    serverHost: patchmon.example.com
+    serverPort: "443"
+    enableHsts: true
+    # Leave trustedProxyRanges empty for a single ingress controller. Set it
+    # only when proxies are chained, e.g. Cloudflare in front of nginx.
+    trustProxy: true
+    timezone: UTC
+
+  existingSecret: "patchmon-secrets"
+  existingSecretJwtKey: "jwt-secret"
+  existingSecretAiEncryptionKey: "ai-encryption-key"
+  existingSecretSessionSecretKey: "session-secret"
+
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 1Gi
+    requests:
+      cpu: 200m
+      memory: 384Mi
+
+  oidc:
+    enabled: false
+    # issuerUrl: https://auth.example.com/application/o/patchmon/
+    # clientId: patchmon
+    # existingSecret: patchmon-secrets
+    # existingSecretClientSecretKey: oidc-client-secret
+    # groups:
+    #   admin: patchmon-admins
+    #   readonly: patchmon-viewers
+
+database:
+  auth:
+    existingSecret: patchmon-secrets
+    existingSecretPasswordKey: postgres-password
+  persistence:
+    size: 20Gi
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+
+redis:
+  auth:
+    existingSecret: patchmon-secrets
+    existingSecretPasswordKey: redis-password
+  persistence:
+    size: 4Gi
+
+guacd:
+  enabled: true
+
+# Every credential comes from patchmon-secrets, so the chart renders no Secret.
+secret:
+  create: false
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # The long timeouts are not optional: agent connections, the browser SSH
+    # terminal, the RDP tunnel and live patch-run logs are all websockets.
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "86400"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "86400"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+  hosts:
+    - host: patchmon.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service:
+            name: server
+            port: 3000
+  tls:
+    - secretName: patchmon-tls
+      hosts:
+        - patchmon.example.com

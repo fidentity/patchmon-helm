@@ -1,0 +1,84 @@
+# PatchMon against a managed PostgreSQL and a managed Redis, with the bundled
+# StatefulSets switched off. This is the shape to use when the database is run
+# by an operator (CloudNativePG, Zalando) or by a cloud provider.
+#
+# The chart still needs `database.auth.username` and `.database`: it assembles
+# DATABASE_URL from them, the password, and `database.external`.
+
+fullnameOverride: "patchmon"
+
+database:
+  enabled: false
+  external:
+    # An operator exposes a read/write Service of its own; CloudNativePG's
+    # is named <cluster>-rw.
+    host: postgres.patchmon.svc.cluster.local
+    port: 5432
+    # verify-full is the right setting when you can give it a root CA; it
+    # needs sslrootcert in extraParams and the CA mounted below.
+    sslMode: verify-full
+    extraParams: "sslrootcert=/etc/ssl/patchmon/pg-ca.crt"
+  auth:
+    database: patchmon
+    username: patchmon
+    existingSecret: patchmon-db-credentials
+    existingSecretPasswordKey: password
+
+redis:
+  enabled: false
+  external:
+    host: redis.patchmon.svc.cluster.local
+    port: 6379
+    # Redis 6+ ACL user. Leave empty to authenticate as `default`.
+    username: ""
+    tls:
+      enabled: true
+      verify: true
+      caFile: /etc/ssl/patchmon/redis-ca.crt
+  auth:
+    existingSecret: patchmon-redis-credentials
+    existingSecretPasswordKey: password
+
+server:
+  env:
+    serverProtocol: https
+    serverHost: patchmon.example.com
+    serverPort: "443"
+    enableHsts: true
+
+  existingSecret: patchmon-secrets
+
+  # Mount the CAs referenced above. Both files come from one ConfigMap here;
+  # use a Secret if your CA bundle is not public.
+  extraVolumes:
+    - name: tls-ca
+      configMap:
+        name: patchmon-tls-ca
+  extraVolumeMounts:
+    - name: tls-ca
+      mountPath: /etc/ssl/patchmon
+      readOnly: true
+
+# The bundled Redis and PostgreSQL are gone, so nothing generates their
+# passwords either.
+secret:
+  create: false
+
+guacd:
+  enabled: false
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: patchmon.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service:
+            name: server
+            port: 3000
+  tls:
+    - secretName: patchmon-tls
+      hosts:
+        - patchmon.example.com

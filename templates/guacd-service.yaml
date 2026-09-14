@@ -1,0 +1,27 @@
+{{- if .Values.guacd.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "patchmon.guacd.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "patchmon.guacd.labels" . | nindent 4 }}
+  {{- if or .Values.guacd.service.annotations .Values.commonAnnotations }}
+  annotations:
+    {{- with .Values.commonAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.guacd.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+spec:
+  type: {{ .Values.guacd.service.type }}
+  ports:
+    - name: guacd
+      port: {{ .Values.guacd.service.port }}
+      targetPort: guacd
+      protocol: TCP
+  selector:
+    {{- include "patchmon.guacd.selectorLabels" . | nindent 4 }}
+{{- end }}

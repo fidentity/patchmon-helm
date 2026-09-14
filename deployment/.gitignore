@@ -1,0 +1,5 @@
+node_modules/
+dist/
+
+# Local npm credentials, if any. Never commit.
+.npmrc
