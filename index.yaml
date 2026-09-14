@@ -1,0 +1,36 @@
+apiVersion: v1
+entries:
+  patchmon:
+  - annotations:
+      artifacthub.io/changes: |
+        - kind: fixed
+          description: Send a loopback Host header on the httpGet probes, which PatchMon's CORS middleware otherwise rejects with 403
+      artifacthub.io/containsSecurityUpdates: "false"
+      artifacthub.io/license: GPL-3.0
+    apiVersion: v2
+    appVersion: v2.1.3
+    created: "2026-09-14T16:10:40.862749+02:00"
+    description: A Helm chart for PatchMon 2.x - Linux & Windows patch monitoring
+      and management
+    digest: 13fbe21f93d796c1a0bb7842c01522aefa7d818cf45ce73032761ddf34393c51
+    home: https://patchmon.net
+    icon: https://raw.githubusercontent.com/PatchMon/PatchMon/main/docs/assets/logo.png
+    keywords:
+    - patchmon
+    - monitoring
+    - patch-management
+    - compliance
+    - security
+    kubeVersion: '>=1.23.0-0'
+    maintainers:
+    - name: fidentity
+      url: https://github.com/fidentity/patchmon-helm
+    name: patchmon
+    sources:
+    - https://github.com/PatchMon/PatchMon
+    - https://github.com/PatchMon/PatchMon/pkgs/container/patchmon-server
+    type: application
+    urls:
+    - https://fidentity.github.io/patchmon-helm/patchmon-2.0.1.tgz
+    version: 2.0.1
+generated: "2026-09-14T16:10:40.860996+02:00"
