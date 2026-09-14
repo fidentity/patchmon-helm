@@ -235,7 +235,7 @@ no connection pooler. For production, point the chart at something managed —
 database:
   enabled: false
   external:
-    host: patchmon-pg-rw.databases.svc.cluster.local
+    host: postgres.patchmon.svc.cluster.local
     sslMode: verify-full
     extraParams: "sslrootcert=/etc/ssl/patchmon/pg-ca.crt"
   auth:

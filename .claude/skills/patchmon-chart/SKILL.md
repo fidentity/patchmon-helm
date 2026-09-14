@@ -211,9 +211,9 @@ effectively permanent.
 
 ## Working in this repo
 
-- Feature branch always, never commit to `main` (org policy).
-- `origin` is SSH. Over HTTPS, pushing anything under `.github/workflows/`
-  fails — the `gh` OAuth token has no `workflow` scope.
-- This repository is public. Nothing here should name internal hosts,
+- Feature branch always, never commit to `main`.
+- Push over SSH. Over HTTPS, pushing anything under `.github/workflows/` fails:
+  a `gh` OAuth token has no `workflow` scope.
+- This repository is public. Nothing here should name private hosts,
   registries, clusters, vaults or deployment repositories; keep examples
   generic (`example.com`, `<owner>`, `<namespace>`).

@@ -19,7 +19,8 @@
 fullnameOverride: "patchmon-prod"
 
 global:
-  storageClass: "proxmox-data"
+  # A ReadWriteOnce StorageClass. Remove to use the cluster's default.
+  storageClass: ""
 
 server:
   env:
@@ -30,7 +31,7 @@ server:
     # Leave trustedProxyRanges empty for a single ingress controller. Set it
     # only when proxies are chained, e.g. Cloudflare in front of nginx.
     trustProxy: true
-    timezone: Europe/Zurich
+    timezone: UTC
 
   existingSecret: "patchmon-secrets"
   existingSecretJwtKey: "jwt-secret"
