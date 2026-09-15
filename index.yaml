@@ -9,10 +9,10 @@ entries:
       artifacthub.io/license: GPL-3.0
     apiVersion: v2
     appVersion: v2.1.3
-    created: "2026-09-14T16:10:40.862749+02:00"
+    created: "2026-09-15T10:08:14.965194523Z"
     description: A Helm chart for PatchMon 2.x - Linux & Windows patch monitoring
       and management
-    digest: 13fbe21f93d796c1a0bb7842c01522aefa7d818cf45ce73032761ddf34393c51
+    digest: e10ad7867dd85f8d62259f1a93419b6fc768db3e267f697e47502528239ada74
     home: https://patchmon.net
     icon: https://raw.githubusercontent.com/PatchMon/PatchMon/main/docs/assets/logo.png
     keywords:
@@ -33,4 +33,4 @@ entries:
     urls:
     - https://fidentity.github.io/patchmon-helm/patchmon-2.0.1.tgz
     version: 2.0.1
-generated: "2026-09-14T16:10:40.860996+02:00"
+generated: "2026-09-15T10:08:14.962049443Z"
