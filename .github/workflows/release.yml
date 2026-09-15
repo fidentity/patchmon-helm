@@ -90,6 +90,7 @@ jobs:
       - name: Publish to the Pages Helm repository
         env:
           TGZ: ${{ env.CHART_NAME }}-${{ steps.version.outputs.version }}.tgz
+          VERSION: ${{ steps.version.outputs.version }}
           # The branch GitHub Pages is configured to serve, at its root.
           PAGES_BRANCH: helm
         run: |
@@ -116,6 +117,16 @@ jobs:
 
           cp "deployment/dist/${TGZ}" .pages/
 
+          # Read from the package being published rather than from the working
+          # tree, so the landing page cannot advertise an appVersion that is
+          # not the one inside the chart people download.
+          APP_VERSION=$(helm show chart "deployment/dist/${TGZ}" \
+            | sed -n 's/^appVersion:[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}[[:space:]]*$/\1/p')
+          if [ -z "$APP_VERSION" ]; then
+            echo "could not read appVersion from ${TGZ}" >&2
+            exit 1
+          fi
+
           cd .pages
           # Rebuilt from the packages actually present rather than merged into
           # the old index, so a hand-edited or half-written index cannot
@@ -123,11 +134,26 @@ jobs:
           # is indexed, so other files on the branch are left alone.
           helm repo index . --url "$PAGES_URL"
 
+          # The landing page states the versions it serves, so it is rendered
+          # here rather than hand-edited on this branch: an edit there would
+          # survive until someone noticed it disagreed with index.yaml.
+          sed -e "s|@@CHART_VERSION@@|${VERSION}|g" \
+              -e "s|@@APP_VERSION@@|${APP_VERSION}|g" \
+              "${GITHUB_WORKSPACE}/deployment/pages/index.html" > index.html
+
+          # A renamed or misspelled token would otherwise publish the literal
+          # placeholder to the site.
+          if grep -q '@@[A-Z_]\{1,\}@@' index.html; then
+            echo "unsubstituted placeholder left in the landing page:" >&2
+            grep -o '@@[A-Z_]\{1,\}@@' index.html | sort -u >&2
+            exit 1
+          fi
+
           # -f, and named paths rather than ".": the helm branch carries the
           # repository's root .gitignore, which ignores *.tgz as build output.
           # A bare `git add .` drops the package without failing, and the
           # commit then publishes an index advertising a 404.
-          git add -f "$TGZ" index.yaml
+          git add -f "$TGZ" index.yaml index.html
           if git diff --staged --quiet; then
             echo "index and packages unchanged, nothing to publish"
             exit 0
