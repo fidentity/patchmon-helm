@@ -112,8 +112,38 @@ different tree under an existing version.
 
 The classic repository is served by GitHub Pages from the **`helm` branch at
 its root** — already configured, so the branch name in `release.yml` is not a
-free choice. The workflow copies the new package onto that branch and rebuilds
-`index.yaml` from the packages present; it leaves other files there alone.
+free choice. The workflow copies the new package onto that branch, rebuilds
+`index.yaml` from the packages present and re-renders `index.html`; it leaves
+other files there alone.
+
+### The landing page
+
+The repository URL answers in a browser as well as to `helm repo add`, from an
+`index.html` on the `helm` branch next to `index.yaml`.
+
+It is **generated, not hand-edited**. The template is
+`deployment/pages/index.html` on `main`, and the release workflow renders it
+onto the branch, substituting two placeholders:
+
+| Placeholder | Comes from |
+|---|---|
+| `@@CHART_VERSION@@` | the version being published, the tag with `v` stripped |
+| `@@APP_VERSION@@` | `appVersion` read back out of the packaged `.tgz` |
+
+Read out of the package rather than out of the working tree, so the page cannot
+advertise an `appVersion` that is not the one inside the chart people download.
+A placeholder left unsubstituted — a renamed token, a typo — fails the release
+rather than publishing `@@…@@` to the site.
+
+Editing the page is therefore an ordinary change to `main`. It goes live at the
+next release; to publish it sooner, dispatch `release.yml` with the version
+already released. That re-runs a reproducible package, so the only thing that
+changes is the page.
+
+Anything else on the page that could go stale — the Kubernetes and Helm floors
+in the version chips, the README anchors it links to — is not substituted.
+Check those when `kubeVersion` in `Chart.yaml` changes or a README heading is
+renamed.
 
 ### Versions
 
