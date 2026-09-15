@@ -1,0 +1,993 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PatchMon Helm chart</title>
+<meta name="description" content="A Helm chart for PatchMon 2.x - Linux and Windows patch monitoring, compliance scanning and patch automation on Kubernetes. Maintained by fidentity.">
+<meta name="color-scheme" content="light dark">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="PatchMon Helm chart">
+<meta property="og:description" content="Run PatchMon 2.x on Kubernetes. Bundled PostgreSQL and Redis, OIDC, websocket-ready ingress, horizontal scaling.">
+<meta property="og:url" content="https://fidentity.github.io/patchmon-helm/">
+<meta name="twitter:card" content="summary">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230B7285'/%3E%3Cg fill='none' stroke='%233BC9DB' stroke-width='4' stroke-linecap='round'%3E%3Cpath d='M18 46V34a14 14 0 0 1 28 0v12'/%3E%3Cpath d='M27 46V34a5 5 0 0 1 10 0v12'/%3E%3C/g%3E%3C/svg%3E">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;600&display=swap" rel="stylesheet">
+
+<style>
+/* ------------------------------------------------------------------
+   fidentity design system
+   Colors   docs/fitypedia-styleguide/wiki/references/colors.md
+   Type     Rubik Regular + SemiBold, T1-T5 / LT / BT / ST scale
+   Patterns Brand (cyan dark) / Accent (cyan accent) / Muted (grey
+            bright) / Neutral (white), fingerprint as the accent motif
+   ------------------------------------------------------------------ */
+:root {
+  /* primary */
+  --cyan-dark:    #0B7285;
+  --cyan-accent:  #3BC9DB;
+  --grey-dark:    #999999;
+  --grey-bright:  #EEEEEE;
+  --black:        #000000;
+  /* secondary, used to differentiate the deployed components */
+  --yellow-dark:  #BFAE12;
+  --green-dark:   #1D8169;
+  --blue-dark:    #2868A4;
+
+  /* pattern levels */
+  --neutral-bg:   #FFFFFF;
+  --muted-bg:     var(--grey-bright);
+  --brand-bg:     var(--cyan-dark);
+  --accent-bg:    var(--cyan-accent);
+
+  --ink:          #111111;
+  --ink-soft:     #55595c;
+  --rule:         #dcdcdc;
+  --card-bg:      #FFFFFF;
+  --code-bg:      #0d1114;
+
+  /* type scale - desktop reference, scaled fluidly */
+  --t1: clamp(2.375rem, 1.55rem + 3.6vw, 3.75rem);   /* 38 -> 60 */
+  --t2: clamp(1.875rem, 1.35rem + 2.3vw, 3rem);      /* 30 -> 48 */
+  --t3: clamp(1.375rem, 1.15rem + 0.95vw, 1.6875rem);/* 22 -> 27 */
+  --t4: 1.25rem;                                     /* 20 */
+  --t5: 1rem;                                        /* 16 */
+  --lt: clamp(1.25rem, 1.05rem + 0.85vw, 1.6875rem); /* 20 -> 27 */
+  --bt: clamp(1.0625rem, 1rem + 0.25vw, 1.25rem);    /* 17 -> 20 */
+  --st: 1rem;                                        /* 16 */
+
+  --maxw: 1140px;
+  --radius: 14px;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --neutral-bg: #0e1113;
+    --muted-bg:   #15191c;
+    --ink:        #f2f4f5;
+    --ink-soft:   #a8b0b4;
+    --rule:       #2a3034;
+    --card-bg:    #171b1e;
+    --code-bg:    #05080a;
+    --cyan-dark:  #0B7285;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  * { animation: none !important; transition: none !important; }
+}
+
+body {
+  margin: 0;
+  background: var(--neutral-bg);
+  color: var(--ink);
+  font-family: "Rubik", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: var(--bt);
+  line-height: 1.4;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+}
+
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+
+a { color: inherit; }
+
+h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+h1 { font-size: var(--t1); line-height: 1.17; font-weight: 400; letter-spacing: -0.02em; }
+h2 { font-size: var(--t2); line-height: 1.17; font-weight: 400; letter-spacing: -0.02em; }
+h3 { font-size: var(--t3); line-height: 1.3; }
+h4 { font-size: var(--t4); line-height: 1.4; }
+p  { margin: 0 0 1.4rem; }
+p:last-child { margin-bottom: 0; }
+
+.grid > *, .cols > *, .features > *,
+.cta__inner > *, .foot__grid > *,
+.steps > li, .steps > li > * { min-width: 0; }
+
+.wrap {
+  max-width: var(--maxw);
+  margin-inline: auto;
+  padding-inline: 24px;
+}
+
+.section { padding-block: clamp(64px, 8vw, 112px); }
+.section--muted   { background: var(--muted-bg); }
+.section--neutral { background: var(--neutral-bg); }
+
+.eyebrow {
+  font-size: var(--st);
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--cyan-dark);
+  margin: 0 0 18px;
+}
+@media (prefers-color-scheme: dark) { .eyebrow { color: var(--cyan-accent); } }
+
+.lead {
+  font-size: var(--lt);
+  line-height: 1.3;
+  font-weight: 600;
+  max-width: 34ch;
+}
+
+.body-soft { color: var(--ink-soft); }
+.small { font-size: var(--st); line-height: 1.32; }
+
+/* ---------- header ---------- */
+.masthead {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--cyan-dark);
+  padding-top: env(safe-area-inset-top, 0px);
+  border-bottom: 1px solid rgba(255,255,255,.14);
+}
+.masthead__inner {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-height: 62px;
+  padding-block: 10px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: var(--t5);
+  line-height: 1.2;
+  margin-right: auto;
+}
+.brand svg { display: block; flex: none; }
+.brand span small {
+  display: block;
+  font-weight: 400;
+  font-size: .8125rem;
+  color: var(--cyan-accent);
+  letter-spacing: .02em;
+}
+.masthead nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.masthead nav a {
+  color: rgba(255,255,255,.88);
+  text-decoration: none;
+  font-size: var(--st);
+  line-height: 1;
+  padding: 9px 12px;
+  border-radius: 8px;
+}
+.masthead nav a:hover { background: rgba(255,255,255,.12); color: #fff; }
+.masthead nav a:focus-visible { outline: 2px solid var(--cyan-accent); outline-offset: 2px; }
+.masthead nav a.is-cta {
+  background: var(--cyan-accent);
+  color: #06323a;
+  font-weight: 600;
+}
+.masthead nav a.is-cta:hover { background: #fff; color: #06323a; }
+@media (max-width: 680px) {
+  .nav-hide-sm { display: none; }
+  .brand { font-size: .9375rem; }
+  .masthead__inner { gap: 12px; }
+}
+@media (max-width: 560px) {
+  /* wrap rather than scroll: a command cut off mid-URL reads as broken */
+  .code pre {
+    font-size: .8125rem;
+    line-height: 1.7;
+    padding: 15px;
+    white-space: pre-wrap;
+    /* break in place: overflow-wrap would push the whole URL down and
+       leave its indent behind as an empty line */
+    word-break: break-all;
+  }
+  .code__head { padding-left: 15px; }
+}
+
+/* ---------- hero : Brand pattern, fingerprint variant ---------- */
+.hero {
+  position: relative;
+  overflow: hidden;
+  background: var(--brand-bg);
+  color: #fff;
+  padding-block: clamp(64px, 9vw, 128px);
+}
+.hero::after {
+  /* transparency gradient fading from the bottom-right corner */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(118deg, var(--cyan-dark) 34%, rgba(11,114,133,0) 82%);
+  pointer-events: none;
+}
+.hero__print {
+  position: absolute;
+  right: -10%;
+  bottom: -34%;
+  width: min(820px, 84%);
+  color: var(--cyan-accent);
+  opacity: .38;
+  pointer-events: none;
+}
+.hero__inner { position: relative; z-index: 2; }
+.hero .eyebrow { color: var(--cyan-accent); }
+.hero h1 { max-width: 16ch; }
+.hero .lead {
+  margin-top: 28px;
+  max-width: 44ch;
+  color: rgba(255,255,255,.93);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 34px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.chips li {
+  font-size: .9375rem;
+  line-height: 1;
+  padding: 8px 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.38);
+  color: rgba(255,255,255,.95);
+}
+.chips li b { font-weight: 600; color: var(--cyan-accent); }
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 34px;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: var(--t5);
+  font-weight: 600;
+  line-height: 1;
+  padding: 15px 22px;
+  border-radius: 10px;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: background-color .15s ease, color .15s ease, border-color .15s ease;
+}
+.btn--primary { background: var(--cyan-accent); color: #06323a; }
+.btn--primary:hover { background: #fff; }
+.btn--ghost { border-color: rgba(255,255,255,.45); color: #fff; }
+.btn--ghost:hover { background: rgba(255,255,255,.12); border-color: #fff; }
+.btn--dark { background: var(--cyan-dark); color: #fff; }
+.btn--dark:hover { background: #06323a; }
+.btn--outline { border-color: currentColor; }
+.btn--outline:hover { background: rgba(0,0,0,.08); }
+.btn:focus-visible { outline: 3px solid var(--cyan-accent); outline-offset: 3px; }
+
+/* ---------- code ---------- */
+.code {
+  position: relative;
+  background: var(--code-bg);
+  border-radius: var(--radius);
+  border: 1px solid rgba(255,255,255,.1);
+  overflow: hidden;
+}
+.code__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px 11px 18px;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+  color: rgba(255,255,255,.62);
+  font-size: .8125rem;
+  line-height: 1.2;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.code__head span { margin-right: auto; }
+.code pre {
+  margin: 0;
+  max-width: 100%;
+  padding: 18px;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: .9375rem;
+  line-height: 1.75;
+  color: #e7edf0;
+  tab-size: 2;
+}
+.code pre .c { color: #7d8b91; }
+.code pre .p { color: var(--cyan-accent); }
+.code pre .s { color: #52DB9B; }
+.copy {
+  flex: none;
+  font: inherit;
+  font-size: .75rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: rgba(255,255,255,.72);
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 7px;
+  padding: 6px 11px;
+  cursor: pointer;
+}
+.copy:hover { background: rgba(255,255,255,.18); color: #fff; }
+.copy:focus-visible { outline: 2px solid var(--cyan-accent); outline-offset: 2px; }
+.copy[data-state="done"] { color: #52DB9B; border-color: #52DB9B; }
+
+.hero .code { margin-top: 38px; max-width: 640px; border-color: rgba(255,255,255,.2); }
+
+/* ---------- disclaimer ---------- */
+.notice {
+  background: var(--muted-bg);
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+.notice__inner {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  padding-block: 26px;
+}
+.notice__bar {
+  flex: none;
+  width: 4px;
+  align-self: stretch;
+  border-radius: 2px;
+  background: var(--yellow-dark);
+}
+.notice p { font-size: var(--st); line-height: 1.5; color: var(--ink-soft); max-width: 92ch; }
+.notice b { color: var(--ink); font-weight: 600; }
+
+/* ---------- section heads ---------- */
+.head { max-width: 62ch; margin-bottom: clamp(38px, 4.5vw, 56px); }
+.head p { margin-top: 20px; color: var(--ink-soft); }
+
+/* ---------- component cards ---------- */
+.grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(248px, 1fr));
+}
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 26px 24px 28px;
+  display: flex;
+  flex-direction: column;
+}
+.card__kind {
+  font-size: .75rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin-bottom: 14px;
+}
+.card h3 {
+  font-family: var(--mono);
+  font-size: 1.0625rem;
+  letter-spacing: -0.01em;
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+}
+.card p { font-size: var(--st); line-height: 1.5; color: var(--ink-soft); }
+.card__mark {
+  width: 34px;
+  height: 4px;
+  border-radius: 2px;
+  margin-bottom: 20px;
+  background: var(--cyan-dark);
+}
+.card--cyan   .card__mark { background: var(--cyan-dark); }
+.card--blue   .card__mark { background: var(--blue-dark); }
+.card--yellow .card__mark { background: var(--yellow-dark); }
+.card--green  .card__mark { background: var(--green-dark); }
+.card__tag {
+  margin-top: 18px;
+  font-size: .8125rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+/* ---------- install ---------- */
+.cols {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  align-items: start;
+}
+.steps {
+  counter-reset: step;
+  list-style: none;
+  margin: 44px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 30px;
+}
+.steps > li {
+  counter-increment: step;
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+.steps > li::before {
+  content: counter(step);
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--cyan-dark);
+  color: #fff;
+  font-weight: 600;
+  font-size: var(--st);
+  line-height: 1;
+}
+.steps h4 { margin-bottom: 10px; }
+.steps p { font-size: var(--st); line-height: 1.5; color: var(--ink-soft); margin-bottom: 16px; max-width: 78ch; }
+@media (max-width: 560px) {
+  .steps > li { grid-template-columns: 34px 1fr; gap: 14px; }
+  .steps > li::before { width: 34px; height: 34px; font-size: .875rem; }
+}
+
+/* ---------- secrets table ---------- */
+.table-scroll { overflow-x: auto; margin-top: 8px; border-radius: var(--radius); border: 1px solid var(--rule); }
+table { width: 100%; min-width: 34rem; border-collapse: collapse; background: var(--card-bg); font-size: var(--st); }
+th, td { text-align: left; padding: 14px 18px; border-bottom: 1px solid var(--rule); line-height: 1.45; }
+th { font-weight: 600; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td code, th code { font-family: var(--mono); font-size: .875rem; }
+td:last-child { color: var(--ink-soft); }
+
+/* ---------- feature list ---------- */
+.features {
+  display: grid;
+  gap: 2px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  overflow: hidden;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+.feature {
+  background: var(--neutral-bg);
+  padding: 30px 28px 32px;
+}
+.feature h4 { margin-bottom: 12px; display: flex; gap: 11px; align-items: baseline; }
+.feature h4::before {
+  content: "";
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--cyan-accent);
+  transform: translateY(-1px);
+}
+.feature p { font-size: var(--st); line-height: 1.55; color: var(--ink-soft); }
+.feature code, .card p code, .steps p code, .steps h4 code {
+  font-family: var(--mono);
+  font-size: .875em;
+  background: var(--muted-bg);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.section--muted .steps p code { background: rgba(0,0,0,.07); }
+@media (prefers-color-scheme: dark) {
+  .section--muted .steps p code { background: rgba(255,255,255,.09); }
+}
+
+/* ---------- accent CTA ---------- */
+.cta {
+  background: var(--accent-bg);
+  color: #06232a;
+  position: relative;
+  overflow: hidden;
+}
+.cta__print {
+  position: absolute;
+  left: -6%;
+  top: -34%;
+  width: min(560px, 62%);
+  color: #fff;
+  opacity: .34;
+  pointer-events: none;
+}
+.cta__inner {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  gap: 40px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  align-items: center;
+}
+.cta h2 { max-width: 15ch; }
+.cta p { margin-top: 20px; font-size: var(--st); line-height: 1.55; max-width: 48ch; }
+.cta .code { border-color: rgba(0,0,0,.2); }
+
+/* ---------- footer ---------- */
+.foot {
+  background: #06323a;
+  color: rgba(255,255,255,.72);
+  padding-block: clamp(52px, 6vw, 76px) 0;
+}
+.foot__grid {
+  display: grid;
+  gap: 40px;
+  grid-template-columns: minmax(240px, 1.4fr) repeat(auto-fit, minmax(160px, 1fr));
+}
+.foot h4 {
+  color: #fff;
+  font-size: .8125rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  margin-bottom: 18px;
+}
+.foot ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 11px; }
+.foot a { color: rgba(255,255,255,.78); text-decoration: none; font-size: var(--st); }
+.foot a:hover { color: var(--cyan-accent); text-decoration: underline; }
+.foot__about p { font-size: var(--st); line-height: 1.55; max-width: 40ch; }
+.foot__bar {
+  margin-top: clamp(44px, 5vw, 64px);
+  border-top: 1px solid rgba(255,255,255,.16);
+  padding-block: 24px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  align-items: center;
+  font-size: .875rem;
+}
+.foot__bar span { color: rgba(255,255,255,.6); }
+.foot__bar .sep { margin-left: auto; }
+
+.vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skip {
+  position: absolute;
+  left: -9999px;
+}
+.skip:focus {
+  left: 16px;
+  top: 16px;
+  z-index: 100;
+  background: #fff;
+  color: var(--cyan-dark);
+  padding: 12px 18px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+</style>
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="masthead">
+  <div class="wrap masthead__inner">
+    <a class="brand" href="#top">
+      <svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="rgba(255,255,255,.12)"/>
+        <g fill="none" stroke="#3BC9DB" stroke-width="4" stroke-linecap="round">
+          <path d="M18 46V34a14 14 0 0 1 28 0v12"/>
+          <path d="M27 46V34a5 5 0 0 1 10 0v12"/>
+        </g>
+      </svg>
+      <span>PatchMon Helm chart<small>maintained by fidentity</small></span>
+    </a>
+    <nav>
+      <a class="nav-hide-sm" href="#deploys">What it deploys</a>
+      <a class="nav-hide-sm" href="#install">Install</a>
+      <a class="nav-hide-sm" href="#capabilities">Capabilities</a>
+      <a class="is-cta" href="https://github.com/fidentity/patchmon-helm">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- Brand pattern, Fingerprint variant -->
+  <section class="hero" id="top">
+    <svg class="hero__print" viewBox="0 0 400 300" aria-hidden="true" fill="none"
+         stroke="currentColor" stroke-width="5" stroke-linecap="round">
+      <path d="M172 300V200a28 28 0 0 1 56 0v100"/>
+      <path d="M144 300V200a56 56 0 0 1 112 0v100"/>
+      <path d="M116 300V200a84 84 0 0 1 168 0v100"/>
+      <path d="M88 300V200a112 112 0 0 1 224 0v100"/>
+      <path d="M60 300V200a140 140 0 0 1 280 0v100"/>
+      <path d="M32 300V200a168 168 0 0 1 336 0v100"/>
+      <path d="M4 300V200a196 196 0 0 1 392 0v100"/>
+    </svg>
+
+    <div class="wrap hero__inner">
+      <p class="eyebrow">Helm chart &middot; PatchMon 2.x</p>
+      <h1>Run PatchMon on your own Kubernetes cluster.</h1>
+      <p class="lead">Linux and Windows patch monitoring, compliance scanning and patch automation &mdash; packaged as one chart, with the data stores, the ingress and the secrets model already worked out.</p>
+
+      <ul class="chips">
+        <li>Chart <b>2.0.1</b></li>
+        <li>PatchMon <b>v2.1.3</b></li>
+        <li>Kubernetes <b>1.23+</b></li>
+        <li>Helm <b>3.8+</b></li>
+        <li><b>GPL-3.0</b></li>
+      </ul>
+
+      <div class="code">
+        <div class="code__head">
+          <span>add the repository</span>
+          <button class="copy" type="button" data-copy="#cmd-add">Copy</button>
+        </div>
+        <pre id="cmd-add"><span class="p">helm</span> repo add patchmon \
+  <span class="s">https://fidentity.github.io/patchmon-helm</span>
+<span class="p">helm</span> install patchmon patchmon/patchmon</pre>
+      </div>
+
+      <div class="actions">
+        <a class="btn btn--primary" href="#install">Install guide</a>
+        <a class="btn btn--ghost" href="https://github.com/fidentity/patchmon-helm#readme">Read the docs</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="notice">
+    <div class="wrap notice__inner">
+      <div class="notice__bar" aria-hidden="true"></div>
+      <p><b>This is not an official PatchMon project.</b> It is an independent, community-maintained Helm chart, not affiliated with, endorsed by or supported by the PatchMon project or its maintainers. It packages upstream&rsquo;s images; it is not built by them. Open chart issues in <a href="https://github.com/fidentity/patchmon-helm/issues">this repository</a>, and application issues at <a href="https://github.com/PatchMon/PatchMon">PatchMon/PatchMon</a>. Derived from an archived community chart and distributed under GPL-3.0.</p>
+    </div>
+  </div>
+
+  <!-- Neutral pattern -->
+  <section class="section section--neutral" id="deploys">
+    <div class="wrap">
+      <div class="head">
+        <p class="eyebrow">What it deploys</p>
+        <h2>Four workloads, one release.</h2>
+        <p>The server needs no persistent volume: agent binaries and the SCAP compliance content ship read-only in the image, and branding assets live in the database. It runs as a StatefulSet because each pod&rsquo;s stable hostname is what the agent presence registry keys on.</p>
+      </div>
+
+      <div class="grid">
+        <article class="card card--cyan">
+          <div class="card__mark" aria-hidden="true"></div>
+          <p class="card__kind">StatefulSet</p>
+          <h3>patchmon-server</h3>
+          <p>The whole application: the <code>/api/*</code> surface and the embedded React SPA on port 3000. Schema migrations run at boot.</p>
+          <p class="card__tag">Scales horizontally</p>
+        </article>
+
+        <article class="card card--blue">
+          <div class="card__mark" aria-hidden="true"></div>
+          <p class="card__kind">StatefulSet</p>
+          <h3>postgres</h3>
+          <p>Bundled single-node PostgreSQL for getting started. Disable it and point the chart at your own managed instance.</p>
+          <p class="card__tag">Optional &middot; bring your own</p>
+        </article>
+
+        <article class="card card--yellow">
+          <div class="card__mark" aria-hidden="true"></div>
+          <p class="card__kind">StatefulSet</p>
+          <h3>redis</h3>
+          <p>Asynq job queues, bootstrap tokens, TFA lockout state and the cross-pod agent presence registry.</p>
+          <p class="card__tag">Required</p>
+        </article>
+
+        <article class="card card--green">
+          <div class="card__mark" aria-hidden="true"></div>
+          <p class="card__kind">Deployment</p>
+          <h3>guacd</h3>
+          <p>Apache Guacamole daemon, for in-browser RDP to Windows hosts. Left out of the release unless you enable it.</p>
+          <p class="card__tag">Optional</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Muted pattern: technical information -->
+  <section class="section section--muted" id="install">
+    <div class="wrap">
+      <div class="head">
+        <p class="eyebrow">Install</p>
+        <h2>From nothing to a running instance.</h2>
+        <p>The chart is published to two places, both carrying the same version built from the same tag &mdash; the OCI registry on GHCR, and this classic repository for tooling without OCI support.</p>
+      </div>
+
+      <div class="cols">
+        <div class="code">
+          <div class="code__head">
+            <span>classic repository</span>
+            <button class="copy" type="button" data-copy="#cmd-classic">Copy</button>
+          </div>
+          <pre id="cmd-classic"><span class="c"># tooling without OCI support</span>
+<span class="p">helm</span> repo add patchmon \
+  <span class="s">https://fidentity.github.io/patchmon-helm</span>
+<span class="p">helm</span> repo update
+<span class="p">helm</span> install patchmon patchmon/patchmon --version 2.0.1</pre>
+        </div>
+
+        <div class="code">
+          <div class="code__head">
+            <span>OCI registry</span>
+            <button class="copy" type="button" data-copy="#cmd-oci">Copy</button>
+          </div>
+          <pre id="cmd-oci"><span class="c"># GHCR, as an OCI chart</span>
+<span class="p">helm</span> install patchmon \
+  <span class="s">oci://ghcr.io/fidentity/charts/patchmon</span> \
+  --version 2.0.1</pre>
+        </div>
+      </div>
+
+      <ol class="steps">
+        <li>
+          <div>
+            <h4>Supply the secrets</h4>
+            <p>The chart generates none of them on purpose: a value that changed on every <code>helm upgrade</code> would invalidate every session and make every encrypted column unreadable. Four have to be supplied.</p>
+            <div class="code">
+              <div class="code__head">
+                <span>quick start</span>
+                <button class="copy" type="button" data-copy="#cmd-secrets">Copy</button>
+              </div>
+              <pre id="cmd-secrets"><span class="p">helm</span> install patchmon patchmon/patchmon \
+  --namespace patchmon --create-namespace \
+  --set server.env.serverHost=patchmon.example.com \
+  --set server.env.serverProtocol=https \
+  --set server.jwtSecret=<span class="s">"$(openssl rand -hex 64)"</span> \
+  --set server.aiEncryptionKey=<span class="s">"$(openssl rand -hex 64)"</span> \
+  --set database.auth.password=<span class="s">"$(openssl rand -hex 32)"</span> \
+  --set redis.auth.password=<span class="s">"$(openssl rand -hex 32)"</span></pre>
+            </div>
+            <p style="margin-top:16px">For anything real, put them in a Secret and reference it &mdash; see <a href="https://github.com/fidentity/patchmon-helm/blob/main/examples/values-prod.yaml">examples/values-prod.yaml</a>. Keep that Secret in git with SOPS, Sealed Secrets or External Secrets.</p>
+            <div class="table-scroll">
+              <table>
+                <caption class="vh">Secrets the chart expects</caption>
+                <thead>
+                  <tr><th scope="col">Secret</th><th scope="col">Required</th><th scope="col">Losing or changing it means</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td><code>jwt-secret</code></td><td>yes</td><td>every session is invalidated</td></tr>
+                  <tr><td><code>ai-encryption-key</code></td><td>yes</td><td>AI credentials, agent bootstrap tokens and notification secrets become unreadable</td></tr>
+                  <tr><td><code>postgres-password</code></td><td>yes</td><td>&mdash;</td></tr>
+                  <tr><td><code>redis-password</code></td><td>yes</td><td>&mdash;</td></tr>
+                  <tr><td><code>session-secret</code></td><td>no</td><td>fallback encryption key, used only when <code>ai-encryption-key</code> is unset</td></tr>
+                  <tr><td><code>oidc-client-secret</code></td><td>with OIDC</td><td>SSO stops working</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </li>
+
+        <li>
+          <div>
+            <h4>Set the Server URL</h4>
+            <p>Log in, create the admin account, and set <b>Settings &rarr; Server URL</b> to the address your hosts reach PatchMon on. PatchMon 2.x keeps that URL in the database, where it defaults to <code>http://localhost:3000</code>, and it is the address baked into every agent install command. Until you set it, the install commands PatchMon hands out will not resolve for your hosts.</p>
+          </div>
+        </li>
+
+        <li>
+          <div>
+            <h4>Expose it, with the websocket timeouts</h4>
+            <p>Agent connections, the browser SSH terminal, the RDP tunnel and live patch-run logs are all websockets. The default ingress annotations raise the nginx proxy timeouts to 86400s &mdash; without that, agents show as &ldquo;connecting&rdquo; and drop every 30&ndash;60 seconds. Traefik needs no configuration; for other controllers, translate the annotations.</p>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- Neutral pattern -->
+  <section class="section section--neutral" id="capabilities">
+    <div class="wrap">
+      <div class="head">
+        <p class="eyebrow">Capabilities</p>
+        <h2>Shaped for clusters that stay up.</h2>
+        <p>The defaults are the ones you would have arrived at yourself after the first incident.</p>
+      </div>
+
+      <div class="features">
+        <article class="feature">
+          <h4>Settings the UI can still edit</h4>
+          <p>PatchMon resolves each setting as environment &gt; database &gt; default, and a variable present in the pod spec greys the field out in the UI. So most entries under <code>server.env</code> default to <code>null</code> &mdash; set one only when you want the chart to own it.</p>
+        </article>
+
+        <article class="feature">
+          <h4>Horizontal scaling</h4>
+          <p>Supported since PatchMon 2.0: no writeable local volumes, jobs coordinated through Redis and Asynq, agent presence shared over Redis pub/sub keyed on <code>POD_ID</code>. Raise <code>server.replicaCount</code> and turn on sticky sessions.</p>
+        </article>
+
+        <article class="feature">
+          <h4>OIDC and SSO</h4>
+          <p>Issuer, client and scopes, with optional user auto-creation and group&rarr;role sync. The redirect URI is derived from your host and printed by <code>helm template</code>, so you can register exactly the right one.</p>
+        </article>
+
+        <article class="feature">
+          <h4>Probes that do not cascade</h4>
+          <p><code>/health</code> reports on PostgreSQL and Redis as well as the process, so it drives the startup and readiness probes &mdash; but never liveness. A 30-second database restart would otherwise fail every replica at once and turn a blip into an outage.</p>
+        </article>
+
+        <article class="feature">
+          <h4>External data stores</h4>
+          <p>Disable the bundled PostgreSQL and Redis and point the chart at managed instances, with the credentials coming from your own Secret. See <code>examples/values-external-services.yaml</code>.</p>
+        </article>
+
+        <article class="feature">
+          <h4>Validated on every push</h4>
+          <p>CI runs <code>helm lint</code>, renders every example, and checks the output against the Kubernetes schemas with kubeconform in strict mode &mdash; which catches the fields <code>helm lint</code> does not.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Accent pattern: call to action -->
+  <section class="section cta">
+    <svg class="cta__print" viewBox="0 0 400 300" aria-hidden="true" fill="none"
+         stroke="currentColor" stroke-width="5" stroke-linecap="round">
+      <path d="M172 300V200a28 28 0 0 1 56 0v100"/>
+      <path d="M144 300V200a56 56 0 0 1 112 0v100"/>
+      <path d="M116 300V200a84 84 0 0 1 168 0v100"/>
+      <path d="M88 300V200a112 112 0 0 1 224 0v100"/>
+      <path d="M60 300V200a140 140 0 0 1 280 0v100"/>
+      <path d="M32 300V200a168 168 0 0 1 336 0v100"/>
+    </svg>
+
+    <div class="wrap cta__inner">
+      <div>
+        <h2>Add the repository and go.</h2>
+        <p>Already running a 1.4.x chart? PatchMon 2.0 merged the backend and frontend into one Go binary and this chart&rsquo;s values changed with it &mdash; read the upgrade guide first, the jump is not a version bump.</p>
+        <div class="actions">
+          <a class="btn btn--dark" href="https://github.com/fidentity/patchmon-helm#readme">Values reference</a>
+          <a class="btn btn--outline" href="https://github.com/fidentity/patchmon-helm/blob/main/docs/upgrading-1x-to-2x.md">Upgrading 1.x &rarr; 2.x</a>
+        </div>
+      </div>
+
+      <div class="code">
+        <div class="code__head">
+          <span>get started</span>
+          <button class="copy" type="button" data-copy="#cmd-cta">Copy</button>
+        </div>
+        <pre id="cmd-cta"><span class="p">helm</span> repo add patchmon \
+  <span class="s">https://fidentity.github.io/patchmon-helm</span>
+<span class="p">helm</span> search repo patchmon --versions
+<span class="p">helm</span> show values patchmon/patchmon</pre>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot__grid">
+      <div class="foot__about">
+        <a class="brand" href="#top" style="margin-bottom:18px">
+          <svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true">
+            <rect width="64" height="64" rx="14" fill="rgba(255,255,255,.12)"/>
+            <g fill="none" stroke="#3BC9DB" stroke-width="4" stroke-linecap="round">
+              <path d="M18 46V34a14 14 0 0 1 28 0v12"/>
+              <path d="M27 46V34a5 5 0 0 1 10 0v12"/>
+            </g>
+          </svg>
+          <span>PatchMon Helm chart<small>maintained by fidentity</small></span>
+        </a>
+        <p>An independent Helm chart for PatchMon 2.x, run in production and maintained in the open. Not affiliated with the PatchMon project.</p>
+      </div>
+
+      <div>
+        <h4>Chart</h4>
+        <ul>
+          <li><a href="https://github.com/fidentity/patchmon-helm#readme">README</a></li>
+          <li><a href="https://github.com/fidentity/patchmon-helm/tree/main/examples">Example values</a></li>
+          <li><a href="https://github.com/fidentity/patchmon-helm/blob/main/docs/upgrading-1x-to-2x.md">Upgrade guide</a></li>
+          <li><a href="https://github.com/fidentity/patchmon-helm/releases">Releases</a></li>
+          <li><a href="index.yaml">index.yaml</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <h4>Upstream</h4>
+        <ul>
+          <li><a href="https://patchmon.net">patchmon.net</a></li>
+          <li><a href="https://github.com/PatchMon/PatchMon">PatchMon on GitHub</a></li>
+          <li><a href="https://github.com/PatchMon/PatchMon/pkgs/container/patchmon-server">Server image</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <h4>Project</h4>
+        <ul>
+          <li><a href="https://github.com/fidentity/patchmon-helm/issues">Issues</a></li>
+          <li><a href="https://github.com/fidentity/patchmon-helm/blob/main/LICENSE">GPL-3.0 license</a></li>
+          <li><a href="https://github.com/fidentity/patchmon-helm/blob/main/NOTICE">Notice</a></li>
+          <li><a href="https://github.com/fidentity">fidentity on GitHub</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="foot__bar">
+      <span>Chart 2.0.1 &middot; PatchMon v2.1.3 &middot; GPL-3.0</span>
+      <span class="sep">Maintained by fidentity</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+document.querySelectorAll(".copy").forEach(function (btn) {
+  btn.addEventListener("click", function () {
+    var el = document.querySelector(btn.dataset.copy);
+    if (!el) return;
+    var done = function () {
+      var label = btn.textContent;
+      btn.textContent = "Copied";
+      btn.dataset.state = "done";
+      setTimeout(function () {
+        btn.textContent = label;
+        delete btn.dataset.state;
+      }, 1600);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(el.innerText).then(done, function () {});
+      return;
+    }
+    var range = document.createRange();
+    range.selectNodeContents(el);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    try { document.execCommand("copy"); done(); } catch (e) {}
+    sel.removeAllRanges();
+  });
+});
+</script>
+</body>
+</html>
