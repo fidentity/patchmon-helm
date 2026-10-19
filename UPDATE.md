@@ -153,5 +153,5 @@ Schema validation, which only `lint.yml` runs:
 
 ```bash
 helm template patchmon . -f examples/values-prod.yaml \
-  | kubeconform -strict -summary -kubernetes-version 1.30.0 -
+  | kubeconform -strict -summary -kubernetes-version 1.34.0 -
 ```

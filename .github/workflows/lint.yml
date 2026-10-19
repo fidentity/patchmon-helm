@@ -50,10 +50,10 @@ jobs:
 
           mkdir -p /tmp/rendered
           # shellcheck disable=SC2086
-          helm template patchmon . $LINT_SECRETS --set ingress.enabled=true \
+          helm template patchmon . $LINT_SECRETS --kube-version 1.34.0 --set ingress.enabled=true \
             > /tmp/rendered/default.yaml
           for f in examples/*.yaml; do
-            helm template patchmon . -f "$f" > "/tmp/rendered/$(basename "$f")"
+            helm template patchmon . -f "$f" --kube-version 1.34.0 > "/tmp/rendered/$(basename "$f")"
           done
 
-          /tmp/kubeconform -strict -summary -kubernetes-version 1.30.0 /tmp/rendered/*.yaml
+          /tmp/kubeconform -strict -summary -kubernetes-version 1.34.0 /tmp/rendered/*.yaml

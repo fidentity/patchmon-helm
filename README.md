@@ -13,7 +13,7 @@
 A Helm chart for [PatchMon](https://github.com/PatchMon/PatchMon) 2.x — Linux
 and Windows patch monitoring, compliance scanning and patch automation.
 
-Chart `2.1.0` · PatchMon `v2.1.6` · Kubernetes 1.23+ · Helm 3.8+
+Chart `2.1.0` · PatchMon `v2.1.6` · Kubernetes 1.34+ · Helm 3.8+
 
 > **Coming from a 1.4.x chart?** Read
 > [docs/upgrading-1x-to-2x.md](docs/upgrading-1x-to-2x.md) first. PatchMon 2.0

@@ -16,18 +16,24 @@ LINT_SECRETS="--set server.jwtSecret=lint \
   --set database.auth.password=lint \
   --set redis.auth.password=lint"
 
+# Render against the chart's minimum supported Kubernetes (Chart.yaml
+# kubeVersion), not Helm's built-in default, which varies by Helm release and
+# would fail the kubeVersion check on an older Helm.
+KUBE_VERSION="--kube-version 1.34.0"
+
 echo "--> helm lint"
 # shellcheck disable=SC2086
-helm lint . $LINT_SECRETS
+helm lint . $LINT_SECRETS $KUBE_VERSION
 
 echo "--> helm template (default values)"
 # shellcheck disable=SC2086
-helm template patchmon . $LINT_SECRETS >/dev/null
+helm template patchmon . $LINT_SECRETS $KUBE_VERSION >/dev/null
 
 echo "--> helm template (examples)"
 for f in examples/*.yaml; do
   printf '    %s\n' "$f"
-  helm template patchmon . -f "$f" >/dev/null
+  # shellcheck disable=SC2086
+  helm template patchmon . -f "$f" $KUBE_VERSION >/dev/null
 done
 
 echo "--> ok"
