@@ -71,7 +71,7 @@ A release is a **git tag**. Two registries are published from one definition:
 | `https://fidentity.github.io/patchmon-helm` | `helm repo add`, for tools without OCI support |
 
 ```bash
-git tag v2.0.1 && git push origin v2.0.1
+git tag v2.1.0 && git push origin v2.1.0
 ```
 
 Only tags are published; branch builds lint but do not publish.
@@ -122,7 +122,7 @@ The chart version comes from the build, not from `Chart.yaml`:
 stripped. `appVersion` is *not* overridden and stays hand-maintained in
 `Chart.yaml`, because the chart and PatchMon move independently.
 
-So on `v2.0.1` both registries carry `2.0.1` built from the same tree. Keep
+So on `v2.1.0` both registries carry `2.1.0` built from the same tree. Keep
 `Chart.yaml`'s `version` in step with the tag you intend to push anyway — it is
 what anyone reading the repository sees.
 
@@ -133,11 +133,11 @@ a valid SemVer string. Release from tags.
 
 ```bash
 # GHCR
-helm install patchmon oci://ghcr.io/fidentity/charts/patchmon --version 2.0.1
+helm install patchmon oci://ghcr.io/fidentity/charts/patchmon --version 2.1.0
 
 # classic repository
 helm repo add patchmon https://fidentity.github.io/patchmon-helm
-helm install patchmon patchmon/patchmon --version 2.0.1
+helm install patchmon patchmon/patchmon --version 2.1.0
 ```
 
 ### Running the same checks locally
