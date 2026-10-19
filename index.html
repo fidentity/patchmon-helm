@@ -386,8 +386,8 @@ code {
         <p class="lead">PatchMon 2.x is upstream&rsquo;s application. This is the chart that installs it &mdash; with PostgreSQL, Redis, ingress and the secrets model already worked out.</p>
 
         <ul class="chips">
-          <li>Chart <b>2.0.1</b></li>
-          <li>PatchMon <b>v2.1.3</b></li>
+          <li>Chart <b>2.1.0</b></li>
+          <li>PatchMon <b>v2.1.6</b></li>
           <li>Kubernetes <b>1.23+</b></li>
           <li>Helm <b>3.8+</b></li>
           <li><b>GPL-3.0</b></li>
@@ -412,10 +412,10 @@ code {
 <span class="c"># four secrets are required, see the README</span>
 <span class="p">helm</span> install patchmon patchmon/patchmon \
   --namespace patchmon --create-namespace \
-  --version 2.0.1 -f my-values.yaml
+  --version 2.1.0 -f my-values.yaml
 
 <span class="c"># or the same version over OCI</span>
-<span class="p">helm</span> install patchmon --version 2.0.1 \
+<span class="p">helm</span> install patchmon --version 2.1.0 \
   <span class="s">oci://ghcr.io/fidentity/charts/patchmon</span></pre>
       </div>
     </div>
