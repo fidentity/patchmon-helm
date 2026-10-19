@@ -121,7 +121,7 @@ does not do:
 
 ```bash
 helm template patchmon . -f examples/values-external-services.yaml \
-  | kubeconform -strict -summary -kubernetes-version 1.30.0 -
+  | kubeconform -strict -summary -kubernetes-version 1.34.0 -
 ```
 
 `kubeconform` runs in `lint.yml` only. It is deliberately not part of

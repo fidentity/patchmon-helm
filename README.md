@@ -13,7 +13,7 @@
 A Helm chart for [PatchMon](https://github.com/PatchMon/PatchMon) 2.x — Linux
 and Windows patch monitoring, compliance scanning and patch automation.
 
-Chart `2.0.1` · PatchMon `v2.1.3` · Kubernetes 1.23+ · Helm 3.8+
+Chart `2.1.0` · PatchMon `v2.1.6` · Kubernetes 1.34+ · Helm 3.8+
 
 > **Coming from a 1.4.x chart?** Read
 > [docs/upgrading-1x-to-2x.md](docs/upgrading-1x-to-2x.md) first. PatchMon 2.0
@@ -42,11 +42,11 @@ from the same tag:
 
 ```bash
 # GHCR, as an OCI chart
-helm install patchmon oci://ghcr.io/fidentity/charts/patchmon --version 2.0.1
+helm install patchmon oci://ghcr.io/fidentity/charts/patchmon --version 2.1.0
 
 # classic repository, for tooling without OCI support
 helm repo add patchmon https://fidentity.github.io/patchmon-helm
-helm install patchmon patchmon/patchmon --version 2.0.1
+helm install patchmon patchmon/patchmon --version 2.1.0
 ```
 
 The examples below use the OCI reference; swap it for `patchmon/patchmon` if
@@ -145,7 +145,7 @@ commented throughout and is the complete reference.
 
 | Value | Description | Default |
 |---|---|---|
-| `server.image.tag` | PatchMon version. | `2.1.3` |
+| `server.image.tag` | PatchMon version. | `2.1.6` |
 | `server.replicaCount` | Replicas. More than 1 needs ingress sticky sessions. | `1` |
 | `server.containerPort` | Port inside the container (`PORT`). | `3000` |
 | `server.env.serverProtocol` / `serverHost` / `serverPort` | The public URL, used to derive the CORS origin and the OIDC URIs. | `http` / `patchmon.example.com` / `""` |
