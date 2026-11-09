@@ -311,7 +311,7 @@ server:
     repository: patchmon/patchmon-server
     # Pin an exact version. Leave in step with Chart.yaml appVersion, or set
     # global.imageTag to override.
-    tag: "2.1.7"
+    tag: "2.1.8"
     pullPolicy: IfNotPresent
 
   # Scaling past one replica is supported from PatchMon 2.0: there are no
